@@ -297,6 +297,7 @@ nav.bottom > button{min-width:52px;padding:0 10px}
     <div class="sp-top">
       <button id="spCancel" class="icon" aria-label="やめる"><svg class="i" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
       <div class="sp-title"><b id="spStepName"></b><small id="spStepNo"></small></div>
+      <button id="spAuto" class="sm auto">✨ 自動</button>
       <button id="spUndo" class="icon" aria-label="塗りを戻す"><svg class="i" viewBox="0 0 24 24"><path d="M9 14L4 9l5-5"/><path d="M4 9h11a5 5 0 010 10h-3"/></svg></button>
       <button id="spDone" class="sm on">完了</button>
     </div>
@@ -2577,6 +2578,7 @@ const spCv = $('#spCv'), spCtx = spCv.getContext('2d');
 
 function offerSplit() {
   showActions('1枚の絵として開きました', [
+    { label: '✨ 自動でパーツに分ける', sub: '顔・目・口・髪・体などを自動で見つけて切り出します（キャラクターの絵向け）', fn: () => setTimeout(() => { App.sel = App.parts[0]; openSplit(); setTimeout(spAuto, 300); }, 0) },
     { label: '✂ パーツに分ける', sub: '目・口・前髪などを、なぞるだけで切り出します', fn: () => setTimeout(() => { App.sel = App.parts[0]; openSplit(); }, 0) },
     { label: 'このまま使う', fn: () => { } },
   ]);
@@ -2593,7 +2595,7 @@ function openSplit() {
     on: true, src, W, H, work, wctx, data: wctx.getImageData(0, 0, W, H),
     mask: new Uint8Array(W * H), maskCv: mkCanvas(W, H), cuts: [], hist: [],
     steps: SPLIT_STEPS.map(s => ({ ...s, done: false })), cur: 0,
-    tool: 'paint', size: 36, tol: 40, cam: null, ptrs: new Map(), g: null, cursor: null, remName: '後ろ髪',
+    tool: 'paint', size: 36, tol: 40, cam: null, auto: null, ptrs: new Map(), g: null, cursor: null, remName: '後ろ髪',
   });
   SP.mctx = SP.maskCv.getContext('2d');
   SP.ver = (SP.ver || 0) + 1; aiReset();
@@ -2719,14 +2721,15 @@ function spLineMap() {
   for (let i = 0; i < n; i++) { const k = i * 4; L[i] = D[k + 3] < 8 ? 255 : 0.299 * D[k] + 0.587 * D[k + 1] + 0.114 * D[k + 2]; }
   const S = new Float64Array((W + 1) * (H + 1));            // 積分画像で 7×7 の平均を速く求める
   for (let y = 0; y < H; y++) { let row = 0; for (let x = 0; x < W; x++) { row += L[y * W + x]; S[(y + 1) * (W + 1) + x + 1] = S[y * (W + 1) + x + 1] + row; } }
-  const r = 3, line = new Uint8Array(n);
+  const r = 4, line = new Uint8Array(n);
   for (let y = 0; y < H; y++) {
     const ya = Math.max(0, y - r), yb = Math.min(H, y + r + 1);
     for (let x = 0; x < W; x++) {
       const xa = Math.max(0, x - r), xb = Math.min(W, x + r + 1);
       const mean = (S[yb * (W + 1) + xb] - S[ya * (W + 1) + xb] - S[yb * (W + 1) + xa] + S[ya * (W + 1) + xa]) / ((yb - ya) * (xb - xa));
       const v = L[y * W + x];
-      if (v < mean - 18 && v < 200) line[y * W + x] = 1;
+      // 暗い髪の上の暗い線も拾えるよう、周りが暗いほど差の基準を小さくする
+      if (v < mean - Math.max(5, Math.min(18, mean * 0.12)) && v < 200) line[y * W + x] = 1;
     }
   }
   SP.line = line; SP.lineVer = SP.ver;
@@ -2923,6 +2926,10 @@ function spGoto(i) {
   $('#spStepName').textContent = st.remainder ? '仕上げ' : st.name;
   $('#spStepNo').textContent = st.remainder ? `${SP.cuts.length}個 切り出し済み` : `${i + 1} / ${SP.steps.length - 1}${st.opt ? '（なければスキップ）' : ''}`;
   aiReset(); spHintStep();
+  if (SP.auto && SP.auto[st.name] && !st.done && !st.remainder && proposalToMask(SP.auto[st.name])) {
+    spMaskView(0, 0, SP.W - 1, SP.H - 1);
+    spHintSet(`自動で選んだ「${st.name}」の範囲です。よければ「切り出す」、違う所は「塗る」「消す」で直してください`);
+  }
   $('#spFill').checked = !!st.fill;
   for (const el of document.querySelectorAll('.sp-work')) el.classList.toggle('hidden', !!st.remainder);
   $('#spRem').classList.toggle('hidden', !st.remainder);
@@ -3105,6 +3112,228 @@ async function aiTap(mx, my) {
 }
 function aiReset() { AI.points = []; AI.mdata = null; $('#spAiSize').textContent = '範囲：-'; }
 
+
+/* =========================================================
+   自動切り抜き（AIなし）
+   1. 線画を壁にして、色のつながりで絵を「領域」に分ける
+   2. 肌色の大きな領域を顔とみなす
+   3. 顔の中の穴（顔に囲まれた部分）を、位置と色で目・眉・鼻・口・頬に分ける
+   4. 顔との隣り合い方・位置・色で、前髪・横髪・アホ毛・耳・首・体を決める
+   ========================================================= */
+function rgb2hsv(r, g, b) {
+  r /= 255; g /= 255; b /= 255;
+  const mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn;
+  let h = 0;
+  if (d) h = mx === r ? ((g - b) / d) % 6 : mx === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  return [(h * 60 + 360) % 360, mx ? d / mx : 0, mx];
+}
+const isSkin = (r, g, b) => { const [h, s, v] = rgb2hsv(r, g, b); return v > 0.55 && s > 0.04 && s < 0.6 && (h < 50 || h > 345) && r >= g && g >= b * 0.85; };
+const isBlush = (r, g, b) => { const [h, s, v] = rgb2hsv(r, g, b); return v > 0.6 && s > 0.15 && s < 0.75 && (h < 15 || h > 330); };
+const cdist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+
+/* 1. 領域分け */
+function autoSegment() {
+  const W = SP.W, H = SP.H, D = SP.data.data, n = W * H, line0 = spLineMap();
+  // 線のすき間（1〜2px）から色がつながって漏れないように、線を1pxだけ太らせて壁にする
+  const line = boxFilter(line0, W, H, 1, 1);
+  const lab = new Int32Array(n), regs = [null];
+  const tl2 = 16 * 16 * 3, tg2 = 62 * 62 * 3;
+  for (let s = 0; s < n; s++) {
+    if (lab[s] || line[s] || D[s * 4 + 3] < 8) continue;
+    const id = regs.length, sr = D[s * 4], sg = D[s * 4 + 1], sb = D[s * 4 + 2];
+    const R = { id, n: 0, r: 0, g: 0, b: 0, x0: W, y0: H, x1: 0, y1: 0, sx: 0, sy: 0 };
+    const st = [s]; lab[s] = id;
+    while (st.length) {
+      const i = st.pop(), x = i % W, y = (i / W) | 0, k = i * 4;
+      R.n++; R.r += D[k]; R.g += D[k + 1]; R.b += D[k + 2]; R.sx += x; R.sy += y;
+      if (x < R.x0) R.x0 = x; if (x > R.x1) R.x1 = x; if (y < R.y0) R.y0 = y; if (y > R.y1) R.y1 = y;
+      for (const j of [x > 0 ? i - 1 : -1, x < W - 1 ? i + 1 : -1, y > 0 ? i - W : -1, y < H - 1 ? i + W : -1]) {
+        if (j < 0 || lab[j] || line[j]) continue;
+        const q = j * 4; if (D[q + 3] < 8) continue;
+        const lr = D[q] - D[k], lg = D[q + 1] - D[k + 1], lb = D[q + 2] - D[k + 2];
+        const gr = D[q] - sr, gg = D[q + 1] - sg, gb = D[q + 2] - sb;
+        if (lr * lr + lg * lg + lb * lb <= tl2 && gr * gr + gg * gg + gb * gb <= tg2) { lab[j] = id; st.push(j); }
+      }
+    }
+    R.c = [R.r / R.n, R.g / R.n, R.b / R.n]; R.cx = R.sx / R.n; R.cy = R.sy / R.n;
+    regs.push(R);
+  }
+  return { lab, regs };
+}
+/* 領域の集合 A と B が、線をはさんで（d px 以内で）隣り合っているか */
+function touches(lab, setA, R, d = 9) {
+  const W = SP.W, H = SP.H;
+  for (let y = R.y0; y <= R.y1; y++) for (let x = R.x0; x <= R.x1; x++) {
+    if (lab[y * W + x] !== R.id) continue;
+    for (const [dx, dy] of [[d, 0], [-d, 0], [0, d], [0, -d]]) {
+      const xx = x + dx, yy = y + dy; if (xx < 0 || yy < 0 || xx >= W || yy >= H) continue;
+      if (setA.has(lab[yy * W + xx])) return true;
+    }
+  }
+  return false;
+}
+function autoAnalyze() {
+  const W = SP.W, H = SP.H, n = W * H, { lab, regs } = autoSegment();
+  const all = regs.slice(1), opaque = all.reduce((a, r) => a + r.n, 0);
+  if (!opaque) return null;
+  // 絵全体の範囲（透明でない所）
+  let fy0 = H, fy1 = 0; for (const r of all) { if (r.n > 30) { fy0 = Math.min(fy0, r.y0); fy1 = Math.max(fy1, r.y1); } }
+  const figH = Math.max(1, fy1 - fy0);
+  // 2. 顔：絵の上の方にある、いちばん大きな肌色の領域
+  const skins = all.filter(r => r.n > opaque * 0.004 && isSkin(...r.c));
+  const faceCand = skins.filter(r => (r.cy - fy0) / figH < 0.6).sort((a, b) => b.n - a.n);
+  const face = faceCand[0];
+  if (!face) return null;
+  const F = { x0: face.x0, y0: face.y0, x1: face.x1, y1: face.y1 };
+  F.w = F.x1 - F.x0 + 1; F.h = F.y1 - F.y0 + 1; F.cx = (F.x0 + F.x1) / 2; F.cy = (F.y0 + F.y1) / 2;
+  // 3. 顔の穴：顔の範囲の中で、顔の外側とつながっていない部分
+  const bw = F.w + 2, bh = F.h + 2, ox = F.x0 - 1, oy = F.y0 - 1, out = new Uint8Array(bw * bh);
+  const inFace = (x, y) => x >= 0 && y >= 0 && x < W && y < H && lab[y * W + x] === face.id;
+  const st = [];
+  for (let y = 0; y < bh; y++) for (let x = 0; x < bw; x++) if ((x === 0 || y === 0 || x === bw - 1 || y === bh - 1) && !inFace(ox + x, oy + y)) { out[y * bw + x] = 1; st.push(y * bw + x); }
+  while (st.length) {
+    const i = st.pop(), x = i % bw, y = (i / bw) | 0;
+    for (const [nx, ny] of [[x - 1, y], [x + 1, y], [x, y - 1], [x, y + 1]]) {
+      if (nx < 0 || ny < 0 || nx >= bw || ny >= bh) continue;
+      const j = ny * bw + nx; if (out[j] || inFace(ox + nx, oy + ny)) continue;
+      out[j] = 1; st.push(j);
+    }
+  }
+  // 穴を8方向のつながりでまとまりにする
+  const hole = new Int32Array(bw * bh), comps = [null];
+  for (let s = 0; s < bw * bh; s++) {
+    const sx = s % bw, sy = (s / bw) | 0;
+    if (out[s] || hole[s] || inFace(ox + sx, oy + sy) || SP.data.data[((oy + sy) * W + ox + sx) * 4 + 3] < 8) continue;
+    const id = comps.length, C = { id, px: [], r: 0, g: 0, b: 0, x0: 1e9, y0: 1e9, x1: -1, y1: -1, sx: 0, sy: 0, nonLine: 0 };
+    const q = [s]; hole[s] = id;
+    while (q.length) {
+      const i = q.pop(), x = i % bw, y = (i / bw) | 0, gi = (oy + y) * W + ox + x, k = gi * 4;
+      C.px.push(gi); C.sx += ox + x; C.sy += oy + y;
+      if (!SP.line[gi]) { C.r += SP.data.data[k]; C.g += SP.data.data[k + 1]; C.b += SP.data.data[k + 2]; C.nonLine++; }
+      C.x0 = Math.min(C.x0, ox + x); C.x1 = Math.max(C.x1, ox + x); C.y0 = Math.min(C.y0, oy + y); C.y1 = Math.max(C.y1, oy + y);
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+        const nx = x + dx, ny = y + dy; if (nx < 0 || ny < 0 || nx >= bw || ny >= bh) continue;
+        const j = ny * bw + nx; if (out[j] || hole[j] || inFace(ox + nx, oy + ny)) continue;
+        if (SP.data.data[((oy + ny) * W + ox + nx) * 4 + 3] < 8) continue;
+        hole[j] = id; q.push(j);
+      }
+    }
+    const m = Math.max(1, C.nonLine); C.c = [C.r / m, C.g / m, C.b / m]; C.cx = C.sx / C.px.length; C.cy = C.sy / C.px.length; C.n = C.px.length;
+    if (C.n >= 6) comps.push(C);
+  }
+  const holes = comps.slice(1);
+  const P = {};                                          // 名前 → 画素の一覧
+  const put = (name, px) => { if (!px.length) return; P[name] = P[name] ? P[name].concat(px) : px.slice(); };
+  const faceArea = face.n + holes.reduce((a, c) => a + c.n, 0);
+  const side = { L: [], R: [] };
+  for (const C of holes) {
+    const ny = (C.cy - F.y0) / F.h, nx = (C.cx - F.cx) / F.w;
+    if (C.nonLine && isBlush(...C.c) && ny > 0.4 && Math.abs(nx) > 0.12) { put('頬', C.px); C.used = 1; continue; }
+    if (ny < 0.72 && Math.abs(nx) > 0.06) { side[nx < 0 ? 'L' : 'R'].push(C); continue; }
+    if (ny >= 0.5 && Math.abs(nx) < 0.3) {
+      if (C.n < faceArea * 0.004 && ny < 0.75) { put('鼻', C.px); C.used = 1; }
+      else { put('口', C.px); C.used = 1; }
+    }
+  }
+  for (const [s, list] of Object.entries(side)) {
+    if (!list.length) continue;
+    const big = list.reduce((a, c) => c.n > a.n ? c : a);
+    for (const C of list) {
+      C.used = 1;
+      const brow = C !== big && C.y1 < big.y0 + (big.y1 - big.y0) * 0.25 && (C.y1 - C.y0) < (big.y1 - big.y0) * 0.6;
+      put((s === 'L' ? '左' : '右') + (brow ? '眉' : '目'), C.px);
+    }
+  }
+  // 顔：肌の領域＋顔の穴すべて（目などを抜いた跡も、肌で埋めた状態で顔パーツに入る）
+  const facePx = [];
+  for (let y = face.y0; y <= face.y1; y++) for (let x = face.x0; x <= face.x1; x++) if (lab[y * W + x] === face.id) facePx.push(y * W + x);
+  for (const C of holes) for (const i of C.px) facePx.push(i);
+  put('顔', facePx);
+  const usedReg = new Set([face.id]);
+  // 4. 髪の色：顔の上側に接している、肌色でない大きな領域の色
+  const faceSet = new Set([face.id]);
+  const around = all.filter(r => r.id !== face.id && r.n > opaque * 0.003 && !isSkin(...r.c) && r.y0 < F.cy && touches(lab, faceSet, r));
+  around.sort((a, b) => b.n - a.n);
+  const hairC = around[0] && around[0].c;
+  const regPx = R => { const px = []; for (let y = R.y0; y <= R.y1; y++) for (let x = R.x0; x <= R.x1; x++) if (lab[y * W + x] === R.id) px.push(y * W + x); return px; };
+  if (hairC) {
+    const hairs = all.filter(r => !usedReg.has(r.id) && r.n > 20 && cdist(r.c, hairC) < 60 && r.x1 > F.x0 - F.w && r.x0 < F.x1 + F.w && r.y0 < F.y1 + F.h);
+    for (const r of hairs) {
+      const adj = touches(lab, faceSet, r), nx = (r.cx - F.cx) / F.w;
+      if (r.y1 < F.y0 + F.h * 0.08 && r.n < face.n * 0.12) { put('アホ毛', regPx(r)); usedReg.add(r.id); }
+      else if (adj && r.y1 < F.y0 + F.h * 0.7 && r.x0 > F.x0 - F.w * 0.25 && r.x1 < F.x1 + F.w * 0.25) { put('前髪', regPx(r)); usedReg.add(r.id); }
+      else if (adj && Math.abs(nx) > 0.35 && r.n < face.n * 0.6 && r.y1 < F.y1 + F.h * 0.8) { put('横髪', regPx(r)); usedReg.add(r.id); }
+    }
+  }
+  // 耳・首・体
+  for (const r of skins) {
+    if (usedReg.has(r.id)) continue;
+    const adj = touches(lab, faceSet, r);
+    if (adj && r.cy > F.y0 + F.h * 0.2 && r.cy < F.y1 - F.h * 0.1 && (r.cx < F.x0 + F.w * 0.15 || r.cx > F.x1 - F.w * 0.15) && r.n < face.n * 0.3) { put('耳', regPx(r)); usedReg.add(r.id); }
+    else if (adj && r.cy > F.y1 - F.h * 0.1 && (r.x1 - r.x0) < F.w * 0.7) { put('首', regPx(r)); usedReg.add(r.id); }
+  }
+  const body = all.filter(r => !usedReg.has(r.id) && r.n > 20 && r.cy > F.y1 + F.h * 0.05 && !(hairC && cdist(r.c, hairC) < 60));
+  if (body.length) { const px = []; for (const r of body) px.push(...regPx(r)); put('体', px); }
+  return P;
+}
+/* 画素の一覧 → マスク（小さな穴を埋め、輪郭線も含める） */
+function proposalToMask(px) {
+  SP.mask.fill(0);
+  for (const i of px) if (SP.data.data[i * 4 + 3] >= 8) SP.mask[i] = 1;
+  const b = spMaskBox(); if (!b) return false;
+  spFillHoles(b, 0.08);
+  if ($('#spLines').checked) spGrowLines(b);
+  spFillHoles(spMaskBox(), 0.08);
+  return true;
+}
+/* 範囲の内側にある小さな穴（線の切れ端など）を埋める */
+function spFillHoles(b, frac) {
+  if (!b) return;
+  const W = SP.W, M = SP.mask;
+  const x0 = Math.max(0, b[0] - 1), y0 = Math.max(0, b[1] - 1), x1 = Math.min(W - 1, b[2] + 1), y1 = Math.min(SP.H - 1, b[3] + 1);
+  const w = x1 - x0 + 1, h = y1 - y0 + 1, seen = new Uint8Array(w * h);
+  let area = 0; for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) area += M[y * W + x];
+  const at = (x, y) => M[(y0 + y) * W + x0 + x];
+  const flood = (s, out) => { const st = [s]; seen[s] = 1; while (st.length) { const i = st.pop(); if (out) out.push(i); const x = i % w, y = (i / w) | 0; for (const [nx, ny] of [[x - 1, y], [x + 1, y], [x, y - 1], [x, y + 1]]) { if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue; const j = ny * w + nx; if (seen[j] || at(nx, ny)) continue; seen[j] = 1; st.push(j); } } };
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if ((x === 0 || y === 0 || x === w - 1 || y === h - 1) && !at(x, y) && !seen[y * w + x]) flood(y * w + x);
+  for (let s = 0; s < w * h; s++) {
+    if (seen[s] || at(s % w, (s / w) | 0)) continue;
+    const px = []; flood(s, px);
+    if (px.length > area * frac) continue;
+    for (const i of px) { const g = (y0 + ((i / w) | 0)) * W + x0 + i % w; if (SP.data.data[g * 4 + 3] >= 8) M[g] = 1; }
+  }
+}
+async function spAuto() {
+  loading(true, '絵を調べています…'); await tick();
+  let P;
+  try { P = autoAnalyze(); } catch (e) { console.error(e); P = null; }
+  finally { loading(false); }
+  const names = P ? SP.steps.filter(s => !s.remainder && !s.done && P[s.name]).map(s => s.name) : [];
+  if (!names.length) {
+    return showActions('自動では見つけられませんでした', [
+      { label: '「色で選択」や「塗る」で切り出す', sub: '自動切り抜きは、肌色の顔があり、線画で描かれたキャラクターの絵に向いています。動物や、線のない塗りの絵は苦手です', fn: () => spSetTool('wand') },
+    ]);
+  }
+  SP.auto = P;
+  showActions(`見つかったパーツ：${names.join('・')}`, [
+    { label: '✨ まとめて切り出す', sub: '自動の範囲のまま、一気にパーツに分けます（あとで「元に戻す」もできます）', fn: () => setTimeout(spAutoAll, 0) },
+    { label: '1つずつ確認しながら切り出す', sub: '各手順に自動の範囲が入った状態になります。よければ「切り出す」、違えば直してください', fn: () => { const i = SP.steps.findIndex(s => names.includes(s.name)); SP.mask.fill(0); spGoto(i); } },
+  ]);
+}
+async function spAutoAll() {
+  loading(true, '自動で切り出しています…'); await tick();
+  try {
+    for (let i = 0; i < SP.steps.length; i++) {
+      const st = SP.steps[i];
+      if (st.remainder || st.done || !SP.auto[st.name]) continue;
+      SP.mask.fill(0); spGoto(i);
+      if (SP.mask.some(v => v)) spCut();
+      await tick();
+    }
+  } finally { loading(false); }
+  spFinish();
+}
+
 /* ---------- 操作 ---------- */
 const spLocal = e => { const r = spCv.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
 const spModel = p => [(p.x - SP.cam.x) / SP.cam.s, (p.y - SP.cam.y) / SP.cam.s];
@@ -3204,6 +3433,7 @@ $('#spSkip').onclick = () => { SP.mask.fill(0); SP.mctx.clearRect(0, 0, SP.W, SP
 $('#spCut').onclick = spCut;
 $('#spRemName').addEventListener('input', e => SP.remName = e.target.value);
 $('#spDone').onclick = spFinish;
+$('#spAuto').onclick = spAuto;
 $('#spDone2').onclick = spFinish;
 $('#spFit').onclick = () => { spFit(); spDraw(); };
 $('#spCancel').onclick = () => { if (SP.cuts.length && !confirm('分けた内容を捨てて閉じますか？')) return; closeSplit(); };
