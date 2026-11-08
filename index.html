@@ -2667,6 +2667,51 @@ function spLine(a, b, r, val, box) {
   const d = Math.hypot(b[0] - a[0], b[1] - a[1]), n = Math.max(1, Math.ceil(d / Math.max(1, r / 3)));
   for (let i = 1; i <= n; i++) spStamp(a[0] + (b[0] - a[0]) * i / n, a[1] + (b[1] - a[1]) * i / n, r, val, box);
 }
+function spMaskBox() {
+  let x0 = SP.W, y0 = SP.H, x1 = -1, y1 = -1;
+  for (let y = 0; y < SP.H; y++) for (let x = 0; x < SP.W; x++) if (SP.mask[y * SP.W + x]) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+  return x1 < 0 ? null : [x0, y0, x1, y1];
+}
+/* 範囲の掃除：タップした所とつながっていない飛び地を消し、内側の小さな穴を埋める */
+function spClean(seeds) {
+  const b = spMaskBox(); if (!b) return;
+  const W = SP.W, M = SP.mask;
+  const x0 = Math.max(0, b[0] - 1), y0 = Math.max(0, b[1] - 1), x1 = Math.min(W - 1, b[2] + 1), y1 = Math.min(SP.H - 1, b[3] + 1);
+  const w = x1 - x0 + 1, h = y1 - y0 + 1, lab = new Int32Array(w * h), sizes = [0];
+  const at = (x, y) => M[(y0 + y) * W + x0 + x];
+  const flood = (sx, sy, id, want, out) => {      // want: 1=範囲、0=範囲外 を同じ番号で塗る
+    const st = [sy * w + sx]; lab[sy * w + sx] = id; let n = 0;
+    while (st.length) {
+      const i = st.pop(), x = i % w, y = (i / w) | 0; n++; if (out) out.push(i);
+      for (const [nx, ny] of [[x - 1, y], [x + 1, y], [x, y - 1], [x, y + 1]]) {
+        if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+        const j = ny * w + nx; if (lab[j] || at(nx, ny) !== want) continue;
+        lab[j] = id; st.push(j);
+      }
+    }
+    return n;
+  };
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (at(x, y) && !lab[y * w + x]) sizes.push(flood(x, y, sizes.length, 1));
+  const keep = new Set();
+  for (const sIdx of seeds) { const sx = sIdx % W - x0, sy = ((sIdx / W) | 0) - y0; if (sx >= 0 && sy >= 0 && sx < w && sy < h && lab[sy * w + sx] > 0) keep.add(lab[sy * w + sx]); }
+  if (!keep.size) { let best = 1; for (let k = 2; k < sizes.length; k++) if (sizes[k] > sizes[best]) best = k; keep.add(best); }
+  let area = 0;
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const l = lab[y * w + x];
+    if (l > 0 && !keep.has(l)) M[(y0 + y) * W + x0 + x] = 0;
+    else if (l > 0) area++;
+  }
+  // 穴：外側とつながっていない範囲外の部分のうち、小さいもの（瞳のハイライトなど）を埋める
+  lab.fill(0);
+  let id = 1;
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if ((x === 0 || y === 0 || x === w - 1 || y === h - 1) && !at(x, y) && !lab[y * w + x]) flood(x, y, id, 0);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    if (at(x, y) || lab[y * w + x]) continue;
+    const px = [], n = flood(x, y, ++id, 0, px);
+    if (n > area * 0.15) continue;
+    for (const i of px) { const g = (y0 + ((i / w) | 0)) * W + x0 + i % w; if (SP.data.data[g * 4 + 3] >= 8) M[g] = 1; }
+  }
+}
 /* 線画の検出：周りより一段暗い細い線を「境目」とみなす（ベタ塗りの暗い髪などは線にならない） */
 function spLineMap() {
   if (SP.line && SP.lineVer === SP.ver) return SP.line;
@@ -2759,13 +2804,13 @@ function boxFilter(m, w, h, r, mode) {           // 正方形の膨張(mode=1)�
   }
   return out;
 }
-function spSnap(box, r) {
+function spSnap(box, r, growK = 0.3) {
   r = Math.max(2, Math.min(30, Math.round(r)));
   const x0 = Math.max(0, box[0] - r * 2), y0 = Math.max(0, box[1] - r * 2), x1 = Math.min(SP.W - 1, box[2] + r * 2), y1 = Math.min(SP.H - 1, box[3] + r * 2);
   const w = x1 - x0 + 1, h = y1 - y0 + 1, m = new Uint8Array(w * h), D = SP.data.data;
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) m[y * w + x] = SP.mask[(y0 + y) * SP.W + x0 + x];
   // 削るのは塗った内側 r まで、足すのは外側へ少しだけ（塗っていない別の場所まで広がらないように）
-  const dil = boxFilter(m, w, h, r, 1), ero = boxFilter(m, w, h, r, 0), grow = boxFilter(m, w, h, Math.max(2, Math.round(r * 0.3)), 1);
+  const dil = boxFilter(m, w, h, r, 1), ero = boxFilter(m, w, h, r, 0), grow = boxFilter(m, w, h, Math.max(2, Math.round(r * growK)), 1);
   const hin = new Float32Array(4096), hout = new Float32Array(4096);
   const q = j => ((D[j] >> 4) << 8) | ((D[j + 1] >> 4) << 4) | (D[j + 2] >> 4);
   let nin = 0, nout = 0;
@@ -2891,7 +2936,6 @@ function spSetTool(t) {
   for (const b of document.querySelectorAll('#split [data-tool]')) b.classList.toggle('on', b.dataset.tool === t);
   $('#spAiBar').classList.toggle('hidden', t !== 'ai');
   $('.sp-size').classList.toggle('hidden', t === 'ai');
-  $('#spSnap').parentElement.classList.toggle('hidden', t === 'ai');
   if (SP.steps) spHintStep();
   const sl = $('#spSize');
   if (t === 'wand') { $('#spSizeL').textContent = '色の近さ'; sl.min = 5; sl.max = 120; sl.value = SP.tol; }
@@ -3004,6 +3048,15 @@ function aiApply() {
       const v = (D[off + y0 * W + x0] * (1 - tx) + D[off + y0 * W + x1] * tx) * (1 - ty) + (D[off + y1 * W + x0] * (1 - tx) + D[off + y1 * W + x1] * tx) * ty;
       if (v > 0) SP.mask[i] = 1;            // AIの出力は「0より大きければ範囲内」という値
     }
+  }
+  // ---- 仕上げ：AIの粗い範囲を、絵の線や色に合わせて整える ----
+  const seeds = AI.points.filter(p => p[2]).map(p => p[1] * SP.W + p[0]);
+  spClean(seeds);
+  const b = spMaskBox();
+  if (b) {
+    const cell = 4 * Math.max(SP.W, SP.H) / 1024;              // AIの結果1マスが、元の絵で何pxか
+    if ($('#spSnap').checked) { spSnap(b, clamp(cell * 3, 4, 30), 0.6); spClean(seeds); }
+    else if ($('#spLines').checked) spGrowLines(b);
   }
   SP.mctx.clearRect(0, 0, SP.W, SP.H); spMaskView(0, 0, SP.W - 1, SP.H - 1);
   $('#spAiSize').textContent = `範囲：${['小', '中', '大'][AI.pick] || AI.pick + 1}`;
