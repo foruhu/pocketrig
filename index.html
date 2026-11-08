@@ -3179,9 +3179,10 @@ function autoAnalyze() {
   // 絵全体の範囲（透明でない所）
   let fy0 = H, fy1 = 0; for (const r of all) { if (r.n > 30) { fy0 = Math.min(fy0, r.y0); fy1 = Math.max(fy1, r.y1); } }
   const figH = Math.max(1, fy1 - fy0);
-  // 2. 顔：絵の上の方にある、いちばん大きな肌色の領域
-  const skins = all.filter(r => r.n > opaque * 0.004 && isSkin(...r.c));
-  const faceCand = skins.filter(r => (r.cy - fy0) / figH < 0.6).sort((a, b) => b.n - a.n);
+  // 2. 顔：上の方にあるほど、大きいほど顔らしいとみなす（全身の絵では腕の肌のほうが大きいことがあるため）
+  const skins = all.filter(r => r.n > opaque * 0.0015 && isSkin(...r.c));
+  const faceScore = r => { const rel = (r.cy - fy0) / figH; return r.n * Math.pow(Math.max(0, 1 - rel), 4) * ((r.x1 - r.x0) > (r.y1 - r.y0) * 2.5 ? 0.3 : 1); };
+  const faceCand = skins.filter(r => (r.cy - fy0) / figH < 0.6).sort((a, b) => faceScore(b) - faceScore(a));
   const face = faceCand[0];
   if (!face) return null;
   const F = { x0: face.x0, y0: face.y0, x1: face.x1, y1: face.y1 };
@@ -3272,7 +3273,9 @@ function autoAnalyze() {
     if (adj && r.cy > F.y0 + F.h * 0.2 && r.cy < F.y1 - F.h * 0.1 && (r.cx < F.x0 + F.w * 0.15 || r.cx > F.x1 - F.w * 0.15) && r.n < face.n * 0.3) { put('耳', regPx(r)); usedReg.add(r.id); }
     else if (adj && r.cy > F.y1 - F.h * 0.1 && (r.x1 - r.x0) < F.w * 0.7) { put('首', regPx(r)); usedReg.add(r.id); }
   }
-  const body = all.filter(r => !usedReg.has(r.id) && r.n > 20 && r.cy > F.y1 + F.h * 0.05 && !(hairC && cdist(r.c, hairC) < 60));
+  // 髪と似た色でも、頭から離れた下の方にあるもの（黒いズボンなど）は体に入れる
+  const nearHead = r => r.y0 < F.y1 + F.h * 0.6;
+  const body = all.filter(r => !usedReg.has(r.id) && r.n > 20 && r.cy > F.y1 + F.h * 0.05 && !(hairC && cdist(r.c, hairC) < 60 && nearHead(r)));
   if (body.length) { const px = []; for (const r of body) px.push(...regPx(r)); put('体', px); }
   return P;
 }
@@ -3303,11 +3306,38 @@ function spFillHoles(b, frac) {
     for (const i of px) { const g = (y0 + ((i / w) | 0)) * W + x0 + i % w; if (SP.data.data[g * 4 + 3] >= 8) M[g] = 1; }
   }
 }
+/* 背景：絵の外周がほぼ同じ色で塗られていたら、外側からつながる同じ色の部分を透明にする */
+function autoRemoveBg() {
+  const W = SP.W, H = SP.H, D = SP.data.data, line = spLineMap(), border = [];
+  for (let x = 0; x < W; x++) border.push(x, (H - 1) * W + x);
+  for (let y = 0; y < H; y++) border.push(y * W, y * W + W - 1);
+  const op = border.filter(i => D[i * 4 + 3] > 200);
+  if (op.length < border.length * 0.6) return 0;                  // もともと背景が透明
+  const ch = k => op.map(i => D[i * 4 + k]).sort((a, b) => a - b)[op.length >> 1];
+  const bg = [ch(0), ch(1), ch(2)], near = i => cdist([D[i * 4], D[i * 4 + 1], D[i * 4 + 2]], bg);
+  if (op.filter(i => near(i) < 40).length < op.length * 0.6) return 0;   // 外周がばらばらの色（背景のある絵）
+  const seen = new Uint8Array(W * H), st = [];
+  for (const i of border) if (!seen[i] && D[i * 4 + 3] > 0 && near(i) < 40) { seen[i] = 1; st.push(i); }
+  let n = 0;
+  while (st.length) {
+    const i = st.pop(), x = i % W, y = (i / W) | 0;
+    D[i * 4 + 3] = 0; n++;
+    for (const j of [x > 0 ? i - 1 : -1, x < W - 1 ? i + 1 : -1, y > 0 ? i - W : -1, y < H - 1 ? i + W : -1]) {
+      if (j < 0 || seen[j]) continue; seen[j] = 1;
+      if (line[j] || D[j * 4 + 3] === 0) continue;
+      if (near(j) < 40) st.push(j);
+      else if (near(j) < 90) D[j * 4 + 3] = Math.round(D[j * 4 + 3] * Math.min(1, (near(j) - 40) / 50));   // ふちのなじみ部分は半透明に
+    }
+  }
+  if (n) { SP.wctx.putImageData(SP.data, 0, 0); SP.ver++; SP.line = null; }
+  return n;
+}
 async function spAuto() {
   loading(true, '絵を調べています…'); await tick();
-  let P;
-  try { P = autoAnalyze(); } catch (e) { console.error(e); P = null; }
-  finally { loading(false); }
+  let P, bgRemoved = 0;
+  try { bgRemoved = autoRemoveBg(); P = autoAnalyze(); } catch (e) { console.error(e); P = null; }
+  finally { loading(false); spDraw(); }
+  if (bgRemoved) toast('塗りつぶされた背景を透明にしました', 3000);
   const names = P ? SP.steps.filter(s => !s.remainder && !s.done && P[s.name]).map(s => s.name) : [];
   if (!names.length) {
     return showActions('自動では見つけられませんでした', [
