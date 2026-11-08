@@ -3276,7 +3276,7 @@ function autoAnalyze() {
   // 髪と似た色でも、頭から離れた下の方にあるもの（黒いズボンなど）は体に入れる
   const nearHead = r => r.y0 < F.y1 + F.h * 0.6;
   const body = all.filter(r => !usedReg.has(r.id) && r.n > 20 && r.cy > F.y1 + F.h * 0.05 && !(hairC && cdist(r.c, hairC) < 60 && nearHead(r)));
-  if (body.length) { const px = []; for (const r of body) px.push(...regPx(r)); put('体', px); }
+  if (body.length) { const px = []; for (const r of body) for (const i of regPx(r)) px.push(i); put('体', px); }   // 大きな配列を「...」で広げると落ちるので1つずつ
   return P;
 }
 /* 画素の一覧 → マスク（小さな穴を埋め、輪郭線も含める） */
@@ -3284,6 +3284,8 @@ function proposalToMask(px) {
   SP.mask.fill(0);
   for (const i of px) if (SP.data.data[i * 4 + 3] >= 8) SP.mask[i] = 1;
   const b = spMaskBox(); if (!b) return false;
+  // 縮めて分析したときは、ガタガタの輪郭を元の絵の線や色に合わせ直す
+  if (SP.autoK && SP.autoK < 0.999 && $('#spSnap').checked) spSnap(b, clamp(1.5 / SP.autoK, 3, 30), 0.6);
   spFillHoles(b, 0.08);
   if ($('#spLines').checked) spGrowLines(b);
   spFillHoles(spMaskBox(), 0.08);
@@ -3332,10 +3334,51 @@ function autoRemoveBg() {
   if (n) { SP.wctx.putImageData(SP.data, 0, 0); SP.ver++; SP.line = null; }
   return n;
 }
+/* 大きな絵は、長い辺が約900pxになるよう縮めてから分析する
+   （解像度が高いと、塗りの細かいムラが線とみなされて領域が細切れになるため）。結果は元の大きさに戻す */
+function autoAnalyzeScaled() {
+  const k = Math.min(1, 900 / Math.max(SP.W, SP.H));
+  SP.autoK = k;
+  if (k > 0.999) return autoAnalyze();
+  const W = SP.W, H = SP.H, w = Math.max(1, Math.round(W * k)), h = Math.max(1, Math.round(H * k));
+  const c = mkCanvas(w, h), x = c.getContext('2d', { willReadFrequently: true });
+  x.imageSmoothingQuality = 'high'; x.drawImage(SP.work, 0, 0, w, h);
+  const save = { W, H, data: SP.data, line: SP.line, lineVer: SP.lineVer };
+  Object.assign(SP, { W: w, H: h, data: x.getImageData(0, 0, w, h), line: null, lineVer: -1 });
+  let P;
+  try {
+    P = autoAnalyze();
+    // 縮めた状態のまま、各パーツに輪郭線と内側の線・小さな穴を含めておく（元の大きさでは線が太すぎて拾いきれないため）
+    if (P) {
+      const saveMask = SP.mask; SP.mask = new Uint8Array(w * h);
+      try {
+        for (const name in P) {
+          SP.mask.fill(0); for (const i of P[name]) SP.mask[i] = 1;
+          const b = spMaskBox(); if (!b) continue;
+          spGrowLines(b); spFillHoles(spMaskBox(), 0.08);
+          const px = []; for (let i = 0; i < SP.mask.length; i++) if (SP.mask[i]) px.push(i);
+          P[name] = px;
+        }
+      } finally { SP.mask = saveMask; }
+    }
+  } finally { Object.assign(SP, save); }
+  if (!P) return null;
+  const out = {}, xm = new Int32Array(W);
+  for (let X = 0; X < W; X++) xm[X] = Math.min(w - 1, Math.floor(X * w / W));
+  for (const name in P) {
+    const m = new Uint8Array(w * h); for (const i of P[name]) m[i] = 1;
+    let n = 0;
+    for (let Y = 0; Y < H; Y++) { const row = Math.min(h - 1, Math.floor(Y * h / H)) * w; for (let X = 0; X < W; X++) if (m[row + xm[X]]) n++; }
+    const px = new Uint32Array(n); let j = 0;
+    for (let Y = 0; Y < H; Y++) { const row = Math.min(h - 1, Math.floor(Y * h / H)) * w; for (let X = 0; X < W; X++) if (m[row + xm[X]]) px[j++] = Y * W + X; }
+    out[name] = px;
+  }
+  return out;
+}
 async function spAuto() {
   loading(true, '絵を調べています…'); await tick();
   let P, bgRemoved = 0;
-  try { bgRemoved = autoRemoveBg(); P = autoAnalyze(); } catch (e) { console.error(e); P = null; }
+  try { bgRemoved = autoRemoveBg(); P = autoAnalyzeScaled(); } catch (e) { console.error(e); P = null; }
   finally { loading(false); spDraw(); }
   if (bgRemoved) toast('塗りつぶされた背景を透明にしました', 3000);
   const names = P ? SP.steps.filter(s => !s.remainder && !s.done && P[s.name]).map(s => s.name) : [];
