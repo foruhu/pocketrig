@@ -2959,16 +2959,37 @@ function aiApply() {
   $('#spAiSize').textContent = `範囲：${['小', '中', '大'][AI.pick] || AI.pick + 1}`;
   spDraw();
 }
+/* AIの処理中に落ちたかを覚えておく（Safariはメモリ不足だとページを読み込み直すため） */
+const AI_STAGES = { load: 'AIのダウンロード・準備中', embed: 'AIが絵を読み取っている途中', decode: 'AIが範囲を考えている途中' };
+function aiMark(stage) { try { stage ? localStorage.setItem('pr_ai_running', stage) : localStorage.removeItem('pr_ai_running'); } catch (e) { } }
+function aiCrashed() { try { return localStorage.getItem('pr_ai_crashed'); } catch (e) { return null; } }
+(function checkAiCrash() {
+  try {
+    const st = localStorage.getItem('pr_ai_running');
+    if (st) {
+      localStorage.removeItem('pr_ai_running'); localStorage.setItem('pr_ai_crashed', st);
+      setTimeout(() => showActions('前回、AIの処理中にアプリが落ちました', [
+        { label: `落ちたところ：${AI_STAGES[st] || st}`, sub: 'この端末では、AIに必要なメモリが足りないようです。作業は自動保存から戻してあります', fn: () => { } },
+        { label: 'わかった（AIは使わない）', sub: '「塗る」「色で選択」で切り出せます', fn: () => { } },
+      ]), 1200);
+    }
+  } catch (e) { }
+})();
 async function aiTap(mx, my) {
   if (mx < 0 || my < 0 || mx >= SP.W || my >= SP.H) return;
   AI.points.push([mx, my, AI.sign]);
   if (AI.busy) { AI.pending = true; spDraw(); return; }    // 計算中のタップは、終わってからまとめて反映
   AI.busy = true; spDraw();
   try {
-    await aiLoad(); await aiEmbed();
+    aiMark('load'); await aiLoad();
+    aiMark('embed'); await aiEmbed();
+    aiMark('decode');
     do { AI.pending = false; spHintSet('AIが範囲を考えています…'); await aiDecode(); } while (AI.pending);
+    aiMark(null);
+    try { localStorage.removeItem('pr_ai_crashed'); } catch (e) { }
     spHintStep();
   } catch (e) {
+    aiMark(null);
     console.error(e);
     AI.points = [];
     spHintStep();
@@ -3054,7 +3075,11 @@ $('#spSteps').addEventListener('click', e => {
   }
   spGoto(+b.dataset.sp);
 });
-document.querySelectorAll('#split [data-tool]').forEach(b => b.onclick = () => spSetTool(b.dataset.tool));
+document.querySelectorAll('#split [data-tool]').forEach(b => b.onclick = () => {
+  const c = b.dataset.tool === 'ai' && SP.tool !== 'ai' && aiCrashed();
+  if (c && !confirm(`この端末では前回、${AI_STAGES[c] || ''}にアプリが落ちました。\n作業は自動保存から戻りますが、切り出しの途中の内容は消えます。\nもう一度AIを試しますか？`)) return;
+  spSetTool(b.dataset.tool);
+});
 $('#spSize').addEventListener('input', e => { if (SP.tool === 'wand') SP.tol = +e.target.value; else SP.size = +e.target.value; });
 $('#spShowCut').onchange = spDraw;
 $('#spUndo').onclick = () => {
