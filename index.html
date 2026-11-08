@@ -1,0 +1,3106 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#15151c">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>ポケットリグ</title>
+<style>
+:root{
+  --bg:#101016; --panel:#1b1b24; --panel2:#24242f; --line:#30303d;
+  --text:#ececf3; --muted:#9a9ab0; --accent:#ff7aa8; --accent2:#ffb3cc; --danger:#ff6b6b;
+  --safe-b:env(safe-area-inset-bottom,0px); --safe-t:env(safe-area-inset-top,0px);
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--text);
+  font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Noto Sans JP","Yu Gothic UI",sans-serif;
+  overscroll-behavior:none;-webkit-user-select:none;user-select:none}
+button{font:inherit;color:inherit;background:var(--panel2);border:1px solid var(--line);border-radius:10px;
+  min-height:40px;padding:0 12px;touch-action:manipulation;cursor:pointer}
+button:active{transform:scale(.97)}
+button:disabled{opacity:.35}
+button.on{background:var(--accent);border-color:var(--accent);color:#2a0f1a;font-weight:700}
+input{font:inherit;color:var(--text);background:var(--bg);border:1px solid var(--line);border-radius:8px;
+  padding:8px 10px;width:100%;-webkit-user-select:text;user-select:text}
+input[type=range]{padding:0;border:0;background:none;accent-color:var(--accent);height:32px}
+.hidden{display:none!important}
+svg.i{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;vertical-align:middle}
+
+#app{display:flex;flex-direction:column;height:100dvh;height:100vh;height:100dvh}
+header.top{display:flex;align-items:center;gap:8px;padding:calc(6px + var(--safe-t)) 10px 6px;background:var(--panel);border-bottom:1px solid var(--line)}
+.brand{flex:1;min-width:0}
+.brand b{font-size:16px;letter-spacing:.04em}
+.brand b span{color:var(--accent)}
+.brand small{display:block;color:var(--muted);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+header .icon{width:40px;padding:0}
+
+main.work{flex:1;display:flex;flex-direction:column;min-height:0}
+#stage{flex:1;position:relative;min-height:0;overflow:hidden;
+  background:radial-gradient(circle at 50% 40%,#1c1c27,#0c0c11)}
+#gl{position:absolute;inset:0;width:100%;height:100%;touch-action:none;display:block}
+#empty{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:24px;text-align:center}
+#empty h1{margin:0 0 4px;font-size:22px}
+#empty h1 span{color:var(--accent)}
+#empty p{margin:0 0 8px;color:var(--muted);font-size:13px;line-height:1.7}
+#empty button{width:min(280px,80vw);min-height:48px}
+#empty .primary{background:var(--accent);border-color:var(--accent);color:#2a0f1a;font-weight:700}
+#modePill{position:absolute;left:50%;top:10px;transform:translateX(-50%);background:rgba(20,20,28,.85);
+  border:1px solid var(--line);border-radius:99px;padding:5px 12px;font-size:12px;color:var(--muted);pointer-events:none;white-space:nowrap}
+
+.sheet{background:var(--panel);border-top:1px solid var(--line);height:42vh;height:42dvh;display:flex;flex-direction:column;min-height:0}
+.tabs{display:flex;gap:6px;padding:8px 10px;border-bottom:1px solid var(--line)}
+.tabs button{flex:1;min-height:36px}
+.tabs .close{flex:0 0 40px;padding:0}
+.pane{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;min-height:0}
+
+#partList{list-style:none;margin:0;padding:4px 0}
+#partList li.grp{padding:8px 12px 2px;font-size:11px;color:var(--muted)}
+#partList li.p{display:flex;align-items:center;gap:8px;padding:4px 8px 4px 6px;margin:2px 6px;border-radius:10px;cursor:pointer}
+#partList li.p.sel{background:#3a2430;outline:1px solid var(--accent)}
+#partList li.p.off .nm{opacity:.45}
+#partList .vis{width:36px;min-height:36px;padding:0;background:none;border:0}
+#partList img{width:40px;height:40px;border-radius:6px;background:repeating-conic-gradient(#3a3a46 0 25%,#2c2c36 0 50%) 0 0/10px 10px;flex:0 0 40px;object-fit:contain}
+#partList .bound::after{content:"●";color:var(--accent);font-size:9px;margin-left:6px;vertical-align:middle}
+#partList .nm{flex:1;min-width:0;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+#propsPane{padding:10px 12px 16px}
+.pempty{color:var(--muted);font-size:13px;padding:20px 0;text-align:center}
+.f{display:block;margin-bottom:10px;font-size:12px;color:var(--muted)}
+.f .v{float:right;color:var(--text)}
+.row2{display:flex;gap:10px}
+.row2 .f{flex:1}
+.pgroup{font-size:11px;color:var(--muted);margin:-4px 0 10px}
+.btnrow{display:flex;gap:8px;margin-top:8px}
+.btnrow button{flex:1}
+button.danger{color:var(--danger)}
+.tabs button{padding:0 2px;font-size:13px;white-space:nowrap;min-width:0}
+.pad{padding:4px 10px 14px}
+.pad2{margin:14px 10px 4px;display:flex;align-items:center;justify-content:space-between}
+button.sm{min-height:32px;padding:0 10px;font-size:12px}
+select{font:inherit;color:var(--text);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:7px 8px;width:100%}
+.prm .f{margin:8px 0 0}
+.chk{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);margin-top:8px}
+.chk input{width:auto}
+.mo-bar{display:flex;gap:6px;padding:10px 10px 4px;align-items:center}
+.mo-bar select{flex:1}
+.mo-time{display:flex;align-items:center;gap:8px;padding:6px 12px 0;font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+.mo-time input{flex:1}
+.mo-ctl{padding:0 10px}
+.mo-ctl button{font-size:13px;padding:0 6px}
+#moRec.on{background:#e04848;border-color:#e04848;color:#fff}
+.mrow{margin:8px 8px 0;padding:8px 10px;border-radius:12px;background:var(--panel2);border:1px solid var(--line)}
+.mrow.touch{border-color:#e04848}
+.mrow-h{display:flex;justify-content:space-between;font-size:13px}
+.mrow-h span{color:var(--muted);font-size:12px;font-variant-numeric:tabular-nums}
+.mrow-h em{font-style:normal;color:var(--accent2);font-size:11px;margin-left:6px}
+.mrow input{display:block}
+.lane{display:block;width:100%;height:16px;margin-top:2px}
+button.auto{background:linear-gradient(135deg,#ff7aa8,#b98cff);border:0;color:#24101c;font-weight:700}
+#split{position:fixed;inset:0;z-index:22;background:var(--bg);display:flex;flex-direction:column}
+.sp-top{display:flex;align-items:center;gap:8px;padding:calc(6px + var(--safe-t)) 10px 6px;background:var(--panel);border-bottom:1px solid var(--line)}
+.sp-top .icon{width:40px;padding:0}
+.sp-title{flex:1;min-width:0}
+.sp-title b{display:block;font-size:16px}
+.sp-title small{color:var(--muted);font-size:11px}
+.sp-stage{flex:1;position:relative;min-height:0;background:#0c0c11}
+#spCv{position:absolute;inset:0;width:100%;height:100%;touch-action:none}
+.sp-hint{position:absolute;left:10px;right:60px;top:10px;background:rgba(20,20,28,.88);border:1px solid var(--line);border-radius:12px;padding:8px 12px;font-size:12px;line-height:1.6;pointer-events:none}
+.sp-fit{position:absolute;right:10px;top:10px;min-height:36px;padding:0 10px;font-size:12px}
+.sp-panel{background:var(--panel);border-top:1px solid var(--line);padding:8px 10px calc(10px + var(--safe-b))}
+.sp-steps{display:flex;gap:6px;overflow-x:auto;padding-bottom:8px;scrollbar-width:none}
+.sp-steps button{flex:0 0 auto;min-height:32px;padding:0 10px;font-size:12px;border-radius:99px}
+.sp-steps button.done{color:var(--accent2)}
+.sp-size{display:flex;align-items:center;gap:10px;margin:8px 0 0}
+.sp-size input{flex:1}
+.sp-opts{display:flex;flex-wrap:wrap;gap:4px 14px;margin:2px 0 4px}
+.sp-opts .chk{margin-top:4px}
+.sp-aibar{display:flex;gap:6px;align-items:center;margin-top:8px}
+.sp-aibar .seg{flex:1}
+.sp-aibar>button{min-height:38px;padding:0 10px;font-size:12px}
+#split .seg button[data-tool=ai].on,#split .seg button[data-tool=ai]{font-weight:700}
+.cutbtn{background:var(--accent);border-color:var(--accent);color:#2a0f1a;font-weight:700}
+.rigbar{padding:10px 10px 2px}
+.rigbar button{width:100%;min-height:44px;font-size:14px}
+.chk.big{display:block;position:relative;padding:10px 10px 10px 40px;margin:0 0 6px;background:var(--panel2);border:1px solid var(--line);border-radius:10px;font-size:14px;color:var(--text)}
+.chk.big input{position:absolute;left:12px;top:12px;width:18px;height:18px;accent-color:var(--accent)}
+.chk.big small{display:block;color:var(--muted);font-size:11px;margin-top:2px}
+.chk.big em{font-style:normal;font-size:11px;color:var(--accent2);margin-left:8px}
+.cats{margin:10px 0 4px;font-size:13px}
+.cats summary{padding:10px 4px;color:var(--accent2);cursor:pointer}
+.catrow{display:flex;align-items:center;gap:8px;margin:0 0 6px}
+.catrow span{flex:1;min-width:0;color:var(--text);font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.catrow select{flex:0 0 52%}
+.auto-note{font-size:12px;color:var(--muted);margin:0 2px 10px;line-height:1.6}
+.primary-btn{width:100%;min-height:46px;margin-top:6px;background:var(--accent);border-color:var(--accent);color:#2a0f1a;font-weight:700}
+.prm{margin:8px 8px 0;padding:10px 10px 6px;border-radius:12px;background:var(--panel2);border:1px solid var(--line)}
+.prm.armed{border-color:var(--accent);background:#2e2129}
+.prm-h{display:flex;align-items:center;gap:6px}
+.prm-h .pname{flex:1;min-width:0;text-align:left;background:none;border:0;padding:0;min-height:32px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.prm-h .pval{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums;min-width:44px;text-align:right}
+.prm-h button.sm{min-height:32px;padding:0 10px;font-size:12px}
+.prm-s{position:relative;padding-top:6px}
+.prm-s input{display:block}
+.ticks{position:relative;height:10px;margin:0 8px}
+.ticks i{position:absolute;top:0;width:2px;height:8px;margin-left:-1px;background:var(--muted);border-radius:1px}
+.ticks i.def{background:var(--text)}
+.ticks i.cur{background:var(--accent);height:10px}
+.prm-k{display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:6px 0 4px;font-size:12px;color:var(--muted)}
+.prm-k button{min-height:30px;padding:0 10px;font-size:12px}
+.prm-empty{padding:18px 16px 6px;color:var(--muted);font-size:13px;line-height:1.7}
+.target{font-size:12px;padding:8px 10px;border-radius:10px;background:var(--bg);border:1px solid var(--line);margin-bottom:10px;color:var(--muted)}
+.target.key{border-color:var(--accent);color:var(--accent2)}
+#modePill.key{border-color:var(--accent);color:var(--accent2)}
+#actSheet{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:25;display:flex;align-items:flex-end;justify-content:center}
+.as-box{width:min(480px,100%);background:var(--panel);border-radius:18px 18px 0 0;padding:12px 12px calc(12px + var(--safe-b));max-height:80vh;overflow-y:auto}
+.as-title{font-size:13px;color:var(--muted);text-align:center;padding:4px 0 10px}
+#asBody button{display:block;width:100%;margin-bottom:6px;min-height:46px;text-align:left}
+#asBody small{display:block;color:var(--muted);font-size:11px}
+.as-cancel{width:100%;min-height:46px;margin-top:4px;background:var(--bg)}
+.sect{margin:18px 0 10px;padding-top:12px;border-top:1px solid var(--line);font-size:13px;font-weight:700}
+.sect span{font-weight:400;color:var(--muted);font-size:11px;margin-left:8px}
+#deformBar{position:absolute;left:10px;right:10px;bottom:10px;display:flex;gap:8px;align-items:center;
+  background:rgba(27,27,36,.92);border:1px solid var(--line);border-radius:14px;padding:6px 8px 6px 12px}
+#deformBar label{flex:1;display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);white-space:nowrap}
+#deformBar input{flex:1}
+#deformBar button{min-height:36px;padding:0 10px;font-size:13px}
+
+nav.bottom{display:flex;gap:8px;align-items:center;padding:8px 10px calc(8px + var(--safe-b));background:var(--panel);border-top:1px solid var(--line)}
+.seg{display:flex;flex:1;background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:3px;gap:3px}
+.seg button{flex:1;border:0;min-height:38px;background:none}
+.seg button.on{background:var(--accent)}
+nav.bottom > button{min-width:52px;padding:0 10px}
+
+.menu{position:fixed;right:10px;top:calc(56px + var(--safe-t));background:var(--panel2);border:1px solid var(--line);
+  border-radius:14px;padding:6px;min-width:220px;z-index:20;box-shadow:0 10px 40px rgba(0,0,0,.5)}
+.menu button{display:flex;width:100%;align-items:center;gap:10px;background:none;border:0;text-align:left;min-height:44px}
+.menu hr{border:0;border-top:1px solid var(--line);margin:4px 6px}
+#loading{position:fixed;inset:0;background:rgba(8,8,12,.75);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;z-index:30}
+.spin{width:36px;height:36px;border:3px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:sp 0.8s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+#toast{position:fixed;left:50%;top:calc(100px + var(--safe-t));transform:translateX(-50%) translateY(-12px);background:#2d2d3a;border:1px solid var(--line);
+  padding:10px 16px;border-radius:12px;font-size:13px;opacity:0;transition:.25s;pointer-events:none;z-index:40;max-width:90vw;text-align:center;line-height:1.5;white-space:pre-line}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+@media (min-width:900px){
+  main.work{flex-direction:row}
+  .sheet{height:auto;width:340px;border-top:0;border-left:1px solid var(--line)}
+  .sheet.hidden{display:flex!important}
+  .tabs .close,#sheetBtn{display:none}
+}
+</style>
+</head>
+<body>
+<div id="app">
+  <header class="top">
+    <div class="brand"><b>ポケット<span>リグ</span></b><small id="docName">ステップ4：揺れとモーション</small></div>
+    <button id="undoBtn" class="icon" aria-label="元に戻す" disabled><svg class="i" viewBox="0 0 24 24"><path d="M9 14L4 9l5-5"/><path d="M4 9h11a5 5 0 010 10h-3"/></svg></button>
+    <button id="redoBtn" class="icon" aria-label="やり直す" disabled><svg class="i" viewBox="0 0 24 24"><path d="M15 14l5-5-5-5"/><path d="M20 9H9a5 5 0 000 10h3"/></svg></button>
+    <button id="menuBtn" class="icon" aria-label="メニュー"><svg class="i" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg></button>
+  </header>
+
+  <main class="work">
+    <div id="stage">
+      <canvas id="gl"></canvas>
+      <div id="modePill" class="hidden"></div>
+      <div id="deformBar" class="hidden">
+        <label>ブラシ<input id="brushR" type="range" min="12" max="200" step="1" value="60"></label>
+        <button id="dbMesh">網</button>
+        <button id="dbReset">戻す</button>
+      </div>
+      <div id="empty">
+        <h1>ポケット<span>リグ</span></h1>
+        <p>パーツ分けしたPSDを読み込んで<br>スマホで動くキャラクターを作ろう</p>
+        <button class="primary" data-act="open">PSD・画像を開く</button>
+        <button data-act="sample">サンプルで試す</button>
+        <p style="margin-top:6px">パーツ分けしていない1枚絵も開けます。<br>開いたあと、案内に沿ってなぞるだけでパーツに分けられます</p>
+      </div>
+    </div>
+    <aside id="sheet" class="sheet hidden">
+      <div class="tabs">
+        <button data-tab="parts" class="on">パーツ</button>
+        <button data-tab="props">調整</button>
+        <button data-tab="params">パラメータ</button>
+        <button data-tab="motion">動き</button>
+        <button class="close" id="sheetClose" aria-label="閉じる"><svg class="i" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></button>
+      </div>
+      <div id="partsPane" class="pane"><ul id="partList"></ul></div>
+      <div id="paramsPane" class="pane hidden">
+        <div class="rigbar"><button id="autoRig" class="auto">✨ パラメータをおまかせで作る</button></div>
+        <div id="paramList"></div>
+        <div class="btnrow pad"><button id="addParam">＋ 追加</button><button id="playParams">▶ 動かす</button><button id="resetParams">初期値に</button></div>
+        <div class="sect pad2">揺れ（物理演算）<button id="physOn" class="sm on">ON</button></div>
+        <div id="physList"></div>
+        <div class="btnrow pad"><button id="addPhys">＋ 揺れを追加</button></div>
+      </div>
+      <div id="motionPane" class="pane hidden">
+        <div class="mo-bar"><select id="moSel"></select><button id="moAuto" class="sm auto">✨ おまかせ</button><button id="moNew" class="sm">＋ 新規</button><button id="moMore" class="sm" aria-label="モーションの設定">⋯</button></div>
+        <div id="moBody" class="hidden">
+          <div class="mo-time"><span id="moT">0.00</span><input type="range" id="moScrub" min="0" max="3" step="0.01" value="0"><span id="moDur">3.0秒</span></div>
+          <div class="btnrow mo-ctl"><button id="moPlay">▶ 再生</button><button id="moRec">● 記録</button><button id="moKey">◆ キー</button><button id="moDelKey" aria-label="この時間のキーを削除">✕</button></div>
+          <div id="moRows"></div>
+        </div>
+        <div id="moEmpty" class="prm-empty"></div>
+      </div>
+      <div id="propsPane" class="pane hidden">
+        <div class="pempty" id="pEmpty">パーツをタップして選択してください</div>
+        <div id="pBody" class="hidden">
+          <div class="target" id="pTarget"></div>
+          <label class="f">名前<input id="pName" autocomplete="off"></label>
+          <div class="pgroup" id="pGroup"></div>
+          <div class="row2">
+            <label class="f">X<input id="pX" type="number" step="1" inputmode="decimal"></label>
+            <label class="f">Y<input id="pY" type="number" step="1" inputmode="decimal"></label>
+          </div>
+          <label class="f">回転<span class="v" id="pRotV"></span><input id="pRot" type="range" min="-180" max="180" step="1"></label>
+          <label class="f">拡大<span class="v" id="pScaleV"></span><input id="pScale" type="range" min="0.1" max="3" step="0.01"></label>
+          <label class="f">不透明度<span class="v" id="pOpV"></span><input id="pOp" type="range" min="0" max="1" step="0.01"></label>
+          <div class="btnrow"><button id="pVis">非表示にする</button><button id="pUp">前へ</button><button id="pDown">後ろへ</button></div>
+          <div class="btnrow"><button id="pReset">配置をリセット</button><button id="pDel" class="danger">削除</button></div>
+          <div class="btnrow"><button id="pSplit">このパーツをさらに分ける（目・口など）</button></div>
+
+          <div class="sect">メッシュ<span id="mInfo"></span></div>
+          <label class="f">細かさ<span class="v" id="mDivV"></span><input id="mDiv" type="range" min="2" max="40" step="1"></label>
+          <div class="btnrow"><button id="mAuto">メッシュを自動生成</button><button id="mQuad">四角に戻す</button></div>
+          <div class="btnrow"><button id="mShow">メッシュを表示</button><button id="mResetDef">変形をリセット</button></div>
+        </div>
+      </div>
+    </aside>
+  </main>
+
+  <nav class="bottom">
+    <div class="seg">
+      <button id="modeView" class="on">視点</button>
+      <button id="modeMove">移動</button>
+      <button id="modeDeform">変形</button>
+    </div>
+    <button id="fitBtn" aria-label="全体表示"><svg class="i" viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
+    <button id="sheetBtn" aria-label="パーツ一覧"><svg class="i" viewBox="0 0 24 24"><path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M3 13l9 5 9-5"/></svg></button>
+  </nav>
+
+  <div id="menu" class="menu hidden">
+    <button data-act="open">PSD・画像を開く</button>
+    <button data-act="openMulti">画像を複数まとめて開く</button>
+    <button data-act="sample">サンプルを開く</button>
+    <hr>
+    <button data-act="split">1枚絵からパーツ分け</button>
+    <button data-act="meshAll">全パーツにメッシュを自動生成</button>
+    <hr>
+    <button data-act="saveProj">プロジェクトを保存（.json）</button>
+    <button data-act="exportPng">PNGで書き出す</button>
+    <hr>
+    <button data-act="close" class="danger">作業を閉じる</button>
+  </div>
+  <input type="file" id="fileIn" hidden>
+  <input type="file" id="fileInMulti" accept="image/*" multiple hidden>
+  <div id="split" class="hidden">
+    <div class="sp-top">
+      <button id="spCancel" class="icon" aria-label="やめる"><svg class="i" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+      <div class="sp-title"><b id="spStepName"></b><small id="spStepNo"></small></div>
+      <button id="spUndo" class="icon" aria-label="塗りを戻す"><svg class="i" viewBox="0 0 24 24"><path d="M9 14L4 9l5-5"/><path d="M4 9h11a5 5 0 010 10h-3"/></svg></button>
+      <button id="spDone" class="sm on">完了</button>
+    </div>
+    <div class="sp-stage"><canvas id="spCv"></canvas><div id="spHint" class="sp-hint"></div><button id="spFit" class="sp-fit">全体</button></div>
+    <div class="sp-panel">
+      <div id="spSteps" class="sp-steps"></div>
+      <div class="sp-work">
+        <div class="seg"><button data-tool="ai">✨ AI</button><button data-tool="paint" class="on">塗る</button><button data-tool="erase">消す</button><button data-tool="wand">色で選択</button></div>
+        <div id="spAiBar" class="sp-aibar hidden"><div class="seg"><button data-ais="1" class="on">＋ 選ぶ</button><button data-ais="0">− 除く</button></div><button id="spAiSize">範囲：-</button><button id="spAiReset">点を消す</button></div>
+        <label class="f sp-size"><span id="spSizeL">太さ</span><input type="range" id="spSize" min="6" max="140" value="36"></label>
+        <div class="sp-opts"><label class="chk"><input type="checkbox" id="spSnap" checked>境目に合わせる</label><label class="chk"><input type="checkbox" id="spFill" checked>後ろを埋める</label><label class="chk"><input type="checkbox" id="spShowCut" checked>切り出し済みを薄く表示</label></div>
+        <div class="btnrow"><button id="spClear">塗りを消す</button><button id="spSkip">スキップ</button><button id="spCut" class="cutbtn">切り出す →</button></div>
+      </div>
+      <div id="spRem" class="hidden">
+        <label class="f">残った部分の名前<input id="spRemName"></label>
+        <button id="spDone2" class="primary-btn">完了してパーツに分ける</button>
+      </div>
+    </div>
+  </div>
+  <div id="actSheet" class="hidden"><div class="as-box"><div class="as-title" id="asTitle"></div><div id="asBody"></div><button class="as-cancel" id="asCancel">キャンセル</button></div></div>
+  <div id="loading" class="hidden"><div class="spin"></div><div id="loadingText">読み込み中…</div></div>
+  <div id="toast"></div>
+</div>
+
+<script>
+'use strict';
+/* =========================================================
+   ポケットリグ  step1
+   - PSD/PNG読み込み → パーツ化 → WebGL表示
+   - 選択・移動・回転・拡大・不透明度・表示・描画順
+   - 元に戻す / やり直す、自動保存(IndexedDB)、.json保存、PNG書き出し
+   ========================================================= */
+const $ = s => document.querySelector(s);
+const App = {
+  doc: null,            // {name, w, h}
+  parts: [],            // 描画順（奥→手前）
+  byId: new Map(),
+  sel: null,
+  mode: 'view',
+  cam: { s: 1, x: 0, y: 0 },
+  undo: [], redo: [], last: null,
+  nextId: 1,
+};
+window.__app = App;
+
+/* ---------- 小物 ---------- */
+const mkCanvas = (w, h) => { const c = document.createElement('canvas'); c.width = Math.max(1, w); c.height = Math.max(1, h); return c; };
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+const tick = () => new Promise(r => setTimeout(r, 0));
+let toastTimer;
+function toast(msg, ms = 2600) {
+  const t = $('#toast'); t.textContent = msg; t.classList.add('show');
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), ms);
+}
+function loading(on, text) {
+  $('#loading').classList.toggle('hidden', !on);
+  if (text) $('#loadingText').textContent = text;
+}
+
+/* =========================================================
+   PSD パーサ
+   ========================================================= */
+const BLEND = {
+  'norm': 'source-over', 'mul ': 'multiply', 'scrn': 'screen', 'over': 'overlay', 'dark': 'darken',
+  'lite': 'lighten', 'div ': 'color-dodge', 'idiv': 'color-burn', 'hLit': 'hard-light', 'sLit': 'soft-light',
+  'diff': 'difference', 'smud': 'exclusion', 'hue ': 'hue', 'sat ': 'saturation', 'colr': 'color',
+  'lum ': 'luminosity', 'lddg': 'lighter'
+};
+
+function unpackBits(src, s, e, dst, off, w) {
+  let i = s, o = off; const oe = off + w;
+  while (i < e && o < oe) {
+    let n = src[i++];
+    if (n > 128) { n = 257 - n; const v = src[i++]; dst.fill(v, o, Math.min(o + n, oe)); o += n; }
+    else if (n < 128) { n += 1; const take = Math.min(n, oe - o); dst.set(src.subarray(i, i + take), o); i += n; o += n; }
+  }
+}
+
+async function inflate(u8) {
+  if (typeof DecompressionStream === 'undefined') throw new Error('この端末のブラウザではZIP圧縮のPSDを読めません');
+  const stream = new Blob([u8]).stream().pipeThrough(new DecompressionStream('deflate'));
+  return new Uint8Array(await new Response(stream).arrayBuffer());
+}
+
+async function parsePSD(buf, onProgress) {
+  const dv = new DataView(buf), bytes = new Uint8Array(buf);
+  let p = 0;
+  const u8 = () => bytes[p++];
+  const u16 = () => { const v = dv.getUint16(p); p += 2; return v; };
+  const i16 = () => { const v = dv.getInt16(p); p += 2; return v; };
+  const u32 = () => { const v = dv.getUint32(p); p += 4; return v; };
+  const i32 = () => { const v = dv.getInt32(p); p += 4; return v; };
+  const str = n => { let s = ''; for (let i = 0; i < n; i++) s += String.fromCharCode(bytes[p++]); return s; };
+
+  if (str(4) !== '8BPS') throw new Error('PSDファイルではありません');
+  const ver = u16();
+  if (ver !== 1) throw new Error('PSB形式（大容量PSD）は未対応です。PSDで保存し直してください');
+  p += 6;
+  const nch = u16(), H = u32(), W = u32(), depth = u16(), mode = u16();
+  if (depth !== 8) throw new Error(depth + 'bitのPSDは未対応です。8bitで保存し直してください');
+  if (mode !== 3 && mode !== 1) throw new Error('RGBカラーのPSDにしてください（CMYKなどは未対応）');
+  const cmLen = u32(); p += cmLen;     // カラーモードデータ
+  const irLen = u32(); p += irLen;     // 画像リソース
+
+  let sjis = null;
+  try { sjis = new TextDecoder('shift_jis'); } catch (e) { }
+  const decodeName = arr => {
+    if (sjis) { try { return sjis.decode(arr); } catch (e) { } }
+    return String.fromCharCode(...arr);
+  };
+
+  function readRecord() {
+    const r = {};
+    r.top = i32(); r.left = i32(); r.bottom = i32(); r.right = i32();
+    const cn = u16(); r.channels = [];
+    for (let i = 0; i < cn; i++) r.channels.push({ id: i16(), len: u32() });
+    p += 4; // '8BIM'
+    r.blend = str(4); r.opacity = u8(); r.clipping = u8(); const flags = u8(); p++;
+    r.hidden = !!(flags & 2);
+    const exLen = u32(), exEnd = p + exLen;
+    const mLen = u32(); p += mLen;           // レイヤーマスク（未使用）
+    const brLen = u32(); p += brLen;         // ブレンド条件
+    const nameStart = p, nl = u8();
+    r.name = decodeName(bytes.subarray(p, p + nl));
+    p = nameStart + Math.ceil((nl + 1) / 4) * 4;     // 4バイト境界まで詰め物
+    r.section = 0;
+    while (p + 12 <= exEnd) {
+      const sig = str(4);
+      if (sig !== '8BIM' && sig !== '8B64') break;
+      const key = str(4), len = u32(), s = p;
+      if (key === 'luni') {
+        const n = u32(); let s2 = '';
+        for (let i = 0; i < n; i++) s2 += String.fromCharCode(u16());
+        r.name = s2.replace(/\0+$/, '');
+      } else if (key === 'lsct' || key === 'lsdk') {
+        r.section = u32();
+      }
+      p = s + len;
+    }
+    p = exEnd;
+    return r;
+  }
+
+  async function decodePlane(comp, w, h, end) {
+    const out = new Uint8Array(w * h);
+    if (comp === 0) {
+      out.set(bytes.subarray(p, Math.min(p + w * h, end)));
+    } else if (comp === 1) {
+      const counts = new Uint16Array(h);
+      for (let y = 0; y < h; y++) counts[y] = u16();
+      let q = p;
+      for (let y = 0; y < h; y++) { unpackBits(bytes, q, q + counts[y], out, y * w, w); q += counts[y]; }
+    } else if (comp === 2 || comp === 3) {
+      const raw = await inflate(bytes.subarray(p, end));
+      out.set(raw.subarray(0, w * h));
+      if (comp === 3) for (let y = 0; y < h; y++) for (let x = 1, i = y * w + 1; x < w; x++, i++) out[i] = (out[i] + out[i - 1]) & 255;
+    } else throw new Error('未対応の圧縮形式です');
+    return out;
+  }
+
+  async function readChannels(r) {
+    const w = r.right - r.left, h = r.bottom - r.top;
+    const planes = {};
+    for (const ch of r.channels) {
+      const end = p + ch.len;
+      if (ch.len < 2) { p = end; continue; }
+      const comp = u16();
+      if (ch.id < -1 || ch.id > 2 || w <= 0 || h <= 0) { p = end; continue; }
+      planes[ch.id] = await decodePlane(comp, w, h, end);
+      p = end;
+    }
+    if (w > 0 && h > 0 && planes[0]) {
+      const n = w * h, rgba = new Uint8ClampedArray(n * 4);
+      const R = planes[0], G = planes[1] || R, B = planes[2] || R, A = planes[-1];
+      for (let i = 0, j = 0; i < n; i++, j += 4) {
+        rgba[j] = R[i]; rgba[j + 1] = G[i]; rgba[j + 2] = B[i]; rgba[j + 3] = A ? A[i] : 255;
+      }
+      r.rgba = rgba; r.w = w; r.h = h;
+    }
+  }
+
+  const layers = [];
+  const lmLen = u32(), lmEnd = p + lmLen;
+  if (lmLen > 0) {
+    const liLen = u32();
+    if (liLen > 0) {
+      const count = Math.abs(i16());
+      const recs = [];
+      for (let i = 0; i < count; i++) recs.push(readRecord());
+      for (let i = 0; i < recs.length; i++) {
+        await readChannels(recs[i]);
+        layers.push(recs[i]);
+        if (onProgress && i % 3 === 0) await onProgress(i / recs.length);
+      }
+    }
+  }
+  p = lmEnd;
+
+  let merged = null;
+  if (!layers.some(l => l.rgba)) {
+    // レイヤーが無いPSD → 統合画像を1枚のパーツにする
+    const comp = u16(), n = W * H, planes = [];
+    if (comp === 1) {
+      const counts = []; for (let c = 0; c < nch; c++) for (let y = 0; y < H; y++) counts.push(u16());
+      let k = 0;
+      for (let c = 0; c < nch; c++) {
+        const out = new Uint8Array(n);
+        for (let y = 0; y < H; y++) { const len = counts[k++]; unpackBits(bytes, p, p + len, out, y * W, W); p += len; }
+        planes.push(out);
+      }
+    } else if (comp === 0) {
+      for (let c = 0; c < nch; c++) { planes.push(bytes.slice(p, p + n)); p += n; }
+    } else throw new Error('この統合画像の形式には未対応です');
+    const R = planes[0], G = mode === 3 ? planes[1] : R, B = mode === 3 ? planes[2] : R;
+    const rgba = new Uint8ClampedArray(n * 4);
+    for (let i = 0, j = 0; i < n; i++, j += 4) { rgba[j] = R[i]; rgba[j + 1] = G[i]; rgba[j + 2] = B[i]; rgba[j + 3] = 255; }
+    merged = { rgba, w: W, h: H };
+  }
+  return { width: W, height: H, layers, merged };
+}
+
+function rgbaToCanvas(rgba, w, h) {
+  const c = mkCanvas(w, h);
+  c.getContext('2d').putImageData(new ImageData(rgba, w, h), 0, 0);
+  return c;
+}
+
+/* PSDのレイヤー → パーツ定義（グループ名・クリッピング焼き込み） */
+function psdToDefs(psd) {
+  const items = [], stack = [], L = psd.layers;
+  for (let i = L.length - 1; i >= 0; i--) {        // 手前 → 奥 の順で辿るとグループ構造が分かる
+    const l = L[i];
+    if (l.section === 1 || l.section === 2) { stack.push({ name: l.name, visible: !l.hidden, opacity: l.opacity / 255 }); continue; }
+    if (l.section === 3) { stack.pop(); continue; }
+    let vis = !l.hidden, op = l.opacity / 255;
+    for (const g of stack) { if (!g.visible) vis = false; op *= g.opacity; }
+    items.push({ l, group: stack.map(g => g.name).join(' / '), visible: vis, opacity: op });
+  }
+  items.reverse();                                   // 奥 → 手前
+  const defs = []; let base = null; const info = { clipped: 0, blends: 0 };
+  for (const it of items) {
+    const l = it.l;
+    if (l.clipping && base) {
+      if (it.visible && l.rgba) { bakeClip(base, it); info.clipped++; }
+      continue;
+    }
+    if (!l.rgba) { base = null; continue; }
+    base = {
+      canvas: rgbaToCanvas(l.rgba, l.w, l.h), left: l.left, top: l.top,
+      name: l.name || 'レイヤー', group: it.group, visible: it.visible, opacity: it.opacity, blend: l.blend
+    };
+    if (l.blend !== 'norm' && l.blend !== 'pass') info.blends++;
+    defs.push(base);
+  }
+  return { defs, info };
+}
+
+function bakeClip(base, it) {
+  const l = it.l, src = rgbaToCanvas(l.rgba, l.w, l.h);
+  const w = base.canvas.width, h = base.canvas.height;
+  const t = mkCanvas(w, h), c = t.getContext('2d', { willReadFrequently: true });
+  c.drawImage(base.canvas, 0, 0);
+  c.globalAlpha = it.opacity;
+  c.globalCompositeOperation = BLEND[l.blend] || 'source-over';
+  c.drawImage(src, l.left - base.left, l.top - base.top);
+  const a = c.getImageData(0, 0, w, h);
+  const b = base.canvas.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, w, h);
+  for (let i = 3; i < a.data.length; i += 4) a.data[i] = b.data[i];   // 下のレイヤーの形で切り抜く
+  c.globalAlpha = 1; c.globalCompositeOperation = 'source-over';
+  c.putImageData(a, 0, 0);
+  base.canvas = t;
+}
+
+/* =========================================================
+   パーツ
+   ========================================================= */
+function makePart(d) {
+  let c = d.canvas, left = d.left || 0, top = d.top || 0, w = c.width, h = c.height;
+  let data = c.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, w, h).data;
+  if (d.trim !== false) {                            // 透明な余白を切り詰める
+    let x0 = w, y0 = h, x1 = -1, y1 = -1;
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      if (data[(y * w + x) * 4 + 3] > 0) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+    }
+    if (x1 < 0) return null;                         // 完全に透明
+    if (x0 > 0 || y0 > 0 || x1 < w - 1 || y1 < h - 1) {
+      const nw = x1 - x0 + 1, nh = y1 - y0 + 1, nc = mkCanvas(nw, nh);
+      const ctx = nc.getContext('2d', { willReadFrequently: true });
+      ctx.drawImage(c, -x0, -y0);
+      c = nc; left += x0; top += y0; w = nw; h = nh;
+      data = ctx.getImageData(0, 0, w, h).data;
+    }
+  }
+  const alpha = new Uint8Array(w * h);
+  for (let i = 0; i < alpha.length; i++) alpha[i] = data[i * 4 + 3];
+  const T = 80, k = Math.min(T / w, T / h), tc = mkCanvas(T, T);
+  tc.getContext('2d').drawImage(c, (T - w * k) / 2, (T - h * k) / 2, w * k, h * k);
+  const id = d.id && !App.byId.has(d.id) ? d.id : App.nextId;
+  App.nextId = Math.max(App.nextId, id + 1);
+  const part = {
+    id, name: d.name || 'パーツ', group: d.group || '', blend: d.blend || 'norm',
+    left, top, w, h, canvas: c, alpha, thumb: tc.toDataURL(), blob: d.blob || null, tex: null,
+    visible: d.visible !== false,
+    mesh: d.mesh ? { verts: Float32Array.from(d.mesh.verts), tris: Uint16Array.from(d.mesh.tris) } : quadMesh(w, h),
+    div: d.div || 12,                                   // メッシュの細かさ
+    base: baseOf(d),                                    // 基本の形
+    binds: parseBinds(d.binds),                         // パラメータごとの差分
+    // ↓ 表示用（基本＋パラメータを合成した結果。evaluate() が書き込む）
+    x: 0, y: 0, rot: 0, scale: 1, opacity: 1, offs: null,
+  };
+  evaluate(part);
+  App.byId.set(id, part);
+  return part;
+}
+
+/* =========================================================
+   パラメータ
+   - p.base               : 基本の形（位置・回転・拡大・不透明度・変形）
+   - p.binds[パラメータID][キー値] : そのキーでの差分
+   - 表示 = 基本 ＋ 各パラメータの差分（前後のキーで直線補間）を足し合わせたもの
+   - base / binds / キーの中身は「書き換えずに作り直す」→ 元に戻すは参照を持つだけで済む
+   ========================================================= */
+App.params = [];           // {id, name, min, max, def, value}
+App.editParam = null;      // 編集中のパラメータID
+App.nextParamId = 1;
+const FIELDS = ['x', 'y', 'rot', 'scale', 'opacity'];
+const keyStr = v => String(Math.round(v * 1000) / 1000);
+function baseOf(d) {
+  return { x: d.x || 0, y: d.y || 0, rot: d.rot || 0, scale: d.scale == null ? 1 : d.scale, opacity: d.opacity == null ? 1 : d.opacity, offs: d.offs ? Float32Array.from(d.offs) : null };
+}
+function parseBinds(b) {
+  const out = {};
+  if (!b) return out;
+  for (const pid in b) {
+    out[pid] = {};
+    for (const k in b[pid]) { const o = b[pid][k]; out[pid][k] = { x: o.x || 0, y: o.y || 0, rot: o.rot || 0, scale: o.scale || 0, opacity: o.opacity || 0, offs: o.offs ? Float32Array.from(o.offs) : null }; }
+  }
+  return out;
+}
+const zeroAcc = () => ({ x: 0, y: 0, rot: 0, scale: 0, opacity: 0, offs: null });
+function addOffs(acc, o, w, n) {
+  if (!o || !w) return;
+  if (!acc.offs) acc.offs = new Float32Array(n);
+  for (let i = 0; i < n; i++) acc.offs[i] += o[i] * w;
+}
+/* パーツ p にパラメータ q が与える差分を acc に足す */
+function interpAdd(acc, p, q) {
+  const b = p.binds[q.id]; if (!b) return;
+  const ks = Object.keys(b).map(Number); if (!ks.includes(q.def)) ks.push(q.def);
+  ks.sort((a, c) => a - c);
+  const v = q.value; let i = 0;
+  while (i < ks.length - 2 && v > ks[i + 1]) i++;
+  const k0 = ks[i], k1 = ks[Math.min(i + 1, ks.length - 1)];
+  const t = k1 === k0 ? 0 : clamp((v - k0) / (k1 - k0), 0, 1);
+  const a = b[keyStr(k0)], c = b[keyStr(k1)], n = p.mesh.verts.length;
+  for (const f of FIELDS) acc[f] += (a ? a[f] : 0) * (1 - t) + (c ? c[f] : 0) * t;
+  addOffs(acc, a && a.offs, 1 - t, n); addOffs(acc, c && c.offs, t, n);
+}
+function sumDeltas(p, exceptId) {
+  const acc = zeroAcc();
+  for (const q of App.params) if (q.id !== exceptId) interpAdd(acc, p, q);
+  return acc;
+}
+function combineOffs(a, b, sign = 1) {
+  if (!a && !b) return null;
+  const n = (a || b).length, out = new Float32Array(n);
+  for (let i = 0; i < n; i++) out[i] = (a ? a[i] : 0) + sign * (b ? b[i] : 0);
+  return out;
+}
+function evaluate(p) {
+  const acc = sumDeltas(p, null), B = p.base;
+  p.x = B.x + acc.x; p.y = B.y + acc.y; p.rot = B.rot + acc.rot;
+  p.scale = Math.max(0.01, B.scale + acc.scale); p.opacity = clamp(B.opacity + acc.opacity, 0, 1);
+  p.offs = combineOffs(B.offs, acc.offs);
+}
+function evaluateAll() {
+  for (const p of App.parts) evaluate(p); requestRender();
+  if (!inFrame && App.physOn && App.physics.length) wake();      // 揺れの計算を起こす
+}
+
+/* いま編集しているのは「基本の形」か「あるパラメータのキー」か */
+function editTarget() {
+  const q = App.params.find(q => q.id === App.editParam);
+  if (!q || Math.abs(q.value - q.def) < 1e-6) return null;
+  return { q, key: keyStr(q.value) };
+}
+function targetState(p) {
+  const t = editTarget();
+  if (!t) return p.base;
+  const b = p.binds[t.q.id];
+  return (b && b[t.key]) || null;
+}
+function setTarget(p, val) {
+  const t = editTarget();
+  if (!t) { p.base = val; return; }
+  const nb = { ...p.binds }; nb[t.q.id] = { ...(nb[t.q.id] || {}), [t.key]: val }; p.binds = nb;
+}
+function cleanOffs(o) {
+  if (!o) return null;
+  for (let i = 0; i < o.length; i++) if (Math.abs(o[i]) > 1e-3) return o;
+  return null;
+}
+/* 画面上で変えた表示状態を、編集先（基本 or キー）に書き戻す */
+function absorb(p) {
+  const t = editTarget(), acc = sumDeltas(p, t ? t.q.id : null);
+  if (!t) {
+    setTarget(p, { x: p.x - acc.x, y: p.y - acc.y, rot: p.rot - acc.rot, scale: p.scale - acc.scale, opacity: p.opacity - acc.opacity, offs: cleanOffs(combineOffs(p.offs, acc.offs, -1)) });
+  } else {
+    const B = p.base, ro = combineOffs(B.offs, acc.offs);
+    setTarget(p, {
+      x: p.x - B.x - acc.x, y: p.y - B.y - acc.y, rot: p.rot - B.rot - acc.rot, scale: p.scale - B.scale - acc.scale,
+      opacity: p.opacity - B.opacity - acc.opacity, offs: cleanOffs(combineOffs(p.offs, ro, -1))
+    });
+  }
+}
+/* 編集先の一部だけを書き換える（リセット系） */
+function patchTarget(p, patch) {
+  const cur = targetState(p) || (editTarget() ? zeroAcc() : p.base);
+  setTarget(p, { ...cur, ...patch }); evaluate(p);
+}
+function hasAnyOffs(p) {
+  if (p.base.offs) return true;
+  for (const pid in p.binds) for (const k in p.binds[pid]) if (p.binds[pid][k].offs) return true;
+  return false;
+}
+function clearAllOffs(p) {
+  p.base = { ...p.base, offs: null };
+  const nb = {};
+  for (const pid in p.binds) { nb[pid] = {}; for (const k in p.binds[pid]) nb[pid][k] = { ...p.binds[pid][k], offs: null }; }
+  p.binds = nb; evaluate(p);
+}
+function paramKeys(q) {
+  const s = new Set([keyStr(q.def)]);
+  for (const p of App.parts) { const b = p.binds[q.id]; if (b) for (const k in b) s.add(k); }
+  return [...s].map(Number).sort((a, b) => a - b);
+}
+function serializeBinds(p, plain) {
+  const out = {}, cv = a => a && (plain ? Array.from(a, v => Math.round(v * 100) / 100) : a.slice());
+  for (const pid in p.binds) {
+    out[pid] = {};
+    for (const k in p.binds[pid]) { const o = p.binds[pid][k]; out[pid][k] = { x: o.x, y: o.y, rot: o.rot, scale: o.scale, opacity: o.opacity, offs: cv(o.offs) }; }
+  }
+  return out;
+}
+
+/* =========================================================
+   メッシュ
+   - verts: パーツ画像上の頂点位置(px)。UVも兼ねる
+   - offs : 変形によるずれ(px)。描画位置 = verts + offs
+   ========================================================= */
+function quadMesh(w, h) {
+  return { verts: new Float32Array([0, 0, w, 0, 0, h, w, h]), tris: new Uint16Array([0, 1, 2, 1, 3, 2]) };
+}
+function autoMesh(p, div) {
+  const step = Math.max(p.w, p.h) / div;
+  const cols = Math.max(1, Math.round(p.w / step)), rows = Math.max(1, Math.round(p.h / step));
+  const sx = p.w / cols, sy = p.h / rows, occ = new Uint8Array(cols * rows);
+  for (let y = 0; y < p.h; y++) {
+    const cy = Math.min(rows - 1, (y / sy) | 0);
+    for (let x = 0; x < p.w; x++) if (p.alpha[y * p.w + x] > 8) occ[cy * cols + Math.min(cols - 1, (x / sx) | 0)] = 1;
+  }
+  const idx = new Int32Array((cols + 1) * (rows + 1)).fill(-1), verts = [], tris = [];
+  const vi = (gx, gy) => {
+    const k = gy * (cols + 1) + gx;
+    if (idx[k] < 0) { idx[k] = verts.length / 2; verts.push(gx * sx, gy * sy); }
+    return idx[k];
+  };
+  for (let gy = 0; gy < rows; gy++) for (let gx = 0; gx < cols; gx++) {
+    if (!occ[gy * cols + gx]) continue;
+    const a = vi(gx, gy), b = vi(gx + 1, gy), c = vi(gx, gy + 1), d = vi(gx + 1, gy + 1);
+    if ((gx + gy) & 1) tris.push(a, b, c, b, d, c); else tris.push(a, b, d, a, d, c);   // 対角線を交互にして歪みを抑える
+  }
+  if (!tris.length || verts.length / 2 > 65000) return quadMesh(p.w, p.h);
+  return { verts: new Float32Array(verts), tris: new Uint16Array(tris) };
+}
+function meshEdges(m) {
+  if (m.edges) return m.edges;
+  const seen = new Set(), e = [], T = m.tris;
+  for (let t = 0; t < T.length; t += 3) for (let k = 0; k < 3; k++) {
+    const a = T[t + k], b = T[t + (k + 1) % 3], key = a < b ? a * 65536 + b : b * 65536 + a;
+    if (!seen.has(key)) { seen.add(key); e.push(a, b); }
+  }
+  return (m.edges = new Uint16Array(e));
+}
+const vcount = p => p.mesh.verts.length / 2;
+
+function resetDoc() {
+  for (const p of App.byId.values()) if (p.tex) gl.deleteTexture(p.tex);
+  App.doc = null; App.parts = []; App.byId.clear(); App.sel = null;
+  App.undo = []; App.redo = []; App.last = null; App.nextId = 1;
+  App.params = []; App.editParam = null; App.nextParamId = 1; stopPlay();
+  MO.playing = MO.rec = false; MO.touched.clear(); MO.t = 0; PH.clear();
+  App.physics = []; App.physOn = true; App.nextPhysId = 1; App.motions = []; App.curMotion = null; App.nextMotionId = 1;
+}
+
+async function setDoc(doc, defs, opts = {}) {
+  resetDoc();
+  App.doc = doc;
+  for (const q of opts.params || []) {
+    App.params.push({ id: q.id, name: q.name, min: q.min, max: q.max, def: q.def, value: q.value == null ? q.def : q.value });
+    App.nextParamId = Math.max(App.nextParamId, q.id + 1);
+  }
+  App.physics = (opts.physics || []).map(g => ({ ...g })); App.physOn = opts.physOn !== false;
+  App.nextPhysId = 1 + Math.max(0, ...App.physics.map(g => g.id));
+  App.motions = (opts.motions || []).map(m => ({ ...m, tracks: { ...m.tracks } }));
+  App.nextMotionId = 1 + Math.max(0, ...App.motions.map(m => m.id));
+  App.roleMap = { ...(opts.roleMap || {}) };
+  App.curMotion = App.motions.some(m => m.id === opts.curMotion) ? opts.curMotion : (App.motions[0] ? App.motions[0].id : null);
+  for (let i = 0; i < defs.length; i++) {
+    const p = makePart(defs[i]);
+    if (p) App.parts.push(p);
+    if (i % 8 === 7) { loading(true, `パーツを準備中… ${i + 1}/${defs.length}`); await tick(); }
+  }
+  App.last = snapshot();
+  $('#empty').classList.add('hidden');
+  $('#docName').textContent = `${doc.name}（${doc.w}×${doc.h}・${App.parts.length}パーツ）`;
+  if (window.innerWidth < 900) openSheet(true);     // 先に一覧を開いてから画面に合わせる
+  if (opts.cam) App.cam = opts.cam; else fit();
+  if (opts.sel && App.byId.has(opts.sel)) App.sel = App.byId.get(opts.sel);
+  renderList(); renderParams(); renderPhys(); renderMotion(); updateProps(); updateUndoBtns(); setMode(App.mode); requestRender(); wake();
+  if (!opts.noSave) scheduleSave();
+}
+
+/* 幾何 */
+/* パーツ画像上の座標 → キャンバス座標 */
+function xform(p) {
+  const cx = p.left + p.w / 2 + p.x, cy = p.top + p.h / 2 + p.y;
+  const r = p.rot * Math.PI / 180, c = Math.cos(r) * p.scale, s = Math.sin(r) * p.scale;
+  const hw = p.w / 2, hh = p.h / 2;
+  return (lx, ly) => [cx + (lx - hw) * c - (ly - hh) * s, cy + (lx - hw) * s + (ly - hh) * c];
+}
+function corners(p) {
+  const f = xform(p);
+  return [f(0, 0), f(p.w, 0), f(0, p.h), f(p.w, p.h)];   // 左上 右上 左下 右下
+}
+/* 変形後の頂点がある範囲で、点がどの三角形に入るかを調べ、元画像の透明度を返す */
+function sampleAlpha(p, lx, ly) {
+  const V = p.mesh.verts, O = p.offs, T = p.mesh.tris;
+  if (!O) {
+    if (lx < 0 || ly < 0 || lx >= p.w || ly >= p.h) return 0;
+    return p.alpha[(ly | 0) * p.w + (lx | 0)];
+  }
+  for (let t = 0; t < T.length; t += 3) {
+    const a = T[t] * 2, b = T[t + 1] * 2, c = T[t + 2] * 2;
+    const ax = V[a] + O[a], ay = V[a + 1] + O[a + 1], bx = V[b] + O[b], by = V[b + 1] + O[b + 1], cx = V[c] + O[c], cy = V[c + 1] + O[c + 1];
+    const den = (by - cy) * (ax - cx) + (cx - bx) * (ay - cy);
+    if (Math.abs(den) < 1e-9) continue;
+    const wa = ((by - cy) * (lx - cx) + (cx - bx) * (ly - cy)) / den;
+    const wb = ((cy - ay) * (lx - cx) + (ax - cx) * (ly - cy)) / den, wc = 1 - wa - wb;
+    if (wa < -1e-4 || wb < -1e-4 || wc < -1e-4) continue;
+    const u = wa * V[a] + wb * V[b] + wc * V[c], v = wa * V[a + 1] + wb * V[b + 1] + wc * V[c + 1];
+    return p.alpha[clamp(v | 0, 0, p.h - 1) * p.w + clamp(u | 0, 0, p.w - 1)];
+  }
+  return 0;
+}
+function deformedBox(p) {
+  const V = p.mesh.verts, O = p.offs;
+  if (!O) return [0, 0, p.w, p.h];
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (let i = 0; i < V.length; i += 2) {
+    const x = V[i] + O[i], y = V[i + 1] + O[i + 1];
+    if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
+  }
+  return [x0, y0, x1, y1];
+}
+function toLocal(p, mx, my) {
+  const cx = p.left + p.w / 2 + p.x, cy = p.top + p.h / 2 + p.y;
+  const dx = mx - cx, dy = my - cy, r = -p.rot * Math.PI / 180, c = Math.cos(r), s = Math.sin(r);
+  return [(dx * c - dy * s) / p.scale + p.w / 2, (dx * s + dy * c) / p.scale + p.h / 2];
+}
+function hitPart(p, mx, my, bounds) {
+  const rad = 8 / App.cam.s;                        // 指の太さぶんの許容
+  const box = bounds ? deformedBox(p) : null;
+  for (const [ox, oy] of [[0, 0], [rad, 0], [-rad, 0], [0, rad], [0, -rad]]) {
+    const [u, v] = toLocal(p, mx + ox, my + oy);
+    if (box) { if (u >= box[0] && v >= box[1] && u <= box[2] && v <= box[3]) return true; continue; }
+    if (sampleAlpha(p, u, v) > 20) return true;
+  }
+  return false;
+}
+function pickPart(mx, my) {
+  for (let i = App.parts.length - 1; i >= 0; i--) {
+    const p = App.parts[i];
+    if (p.visible && p.opacity > 0.02 && hitPart(p, mx, my, false)) return p;
+  }
+  return null;
+}
+
+/* =========================================================
+   WebGL 描画
+   ========================================================= */
+const canvas = $('#gl');
+const gl = canvas.getContext('webgl', { alpha: true, premultipliedAlpha: true, antialias: true });
+let prog, uRes, uCam, uCol, uPs, buf, ibuf, whiteTex, checkerTex, MAXTEX = 4096;
+function initGL() {
+  if (!gl) { toast('この端末ではWebGLが使えません', 6000); return; }
+  const vs = `attribute vec2 a_pos;attribute vec2 a_uv;uniform vec2 u_res;uniform vec3 u_cam;uniform float u_ps;varying vec2 v_uv;
+    void main(){vec2 s=a_pos*u_cam.x+u_cam.yz;vec2 c=s/u_res*2.0-1.0;gl_Position=vec4(c.x,-c.y,0.0,1.0);v_uv=a_uv;gl_PointSize=u_ps;}`;
+  const fs = `precision mediump float;varying vec2 v_uv;uniform sampler2D u_tex;uniform vec4 u_col;
+    void main(){gl_FragColor=texture2D(u_tex,v_uv)*u_col;}`;
+  const sh = (t, s) => { const o = gl.createShader(t); gl.shaderSource(o, s); gl.compileShader(o); return o; };
+  prog = gl.createProgram();
+  gl.attachShader(prog, sh(gl.VERTEX_SHADER, vs)); gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, fs));
+  gl.linkProgram(prog); gl.useProgram(prog);
+  uRes = gl.getUniformLocation(prog, 'u_res'); uCam = gl.getUniformLocation(prog, 'u_cam'); uCol = gl.getUniformLocation(prog, 'u_col');
+  uPs = gl.getUniformLocation(prog, 'u_ps');
+  buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+  ibuf = gl.createBuffer(); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ibuf);
+  const aPos = gl.getAttribLocation(prog, 'a_pos'), aUv = gl.getAttribLocation(prog, 'a_uv');
+  gl.enableVertexAttribArray(aPos); gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 16, 0);
+  gl.enableVertexAttribArray(aUv); gl.vertexAttribPointer(aUv, 2, gl.FLOAT, false, 16, 8);
+  gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+  MAXTEX = gl.getParameter(gl.MAX_TEXTURE_SIZE);
+  whiteTex = rawTex(1, 1, [255, 255, 255, 255], false);
+  checkerTex = rawTex(2, 2, [205, 205, 212, 255, 240, 240, 244, 255, 240, 240, 244, 255, 205, 205, 212, 255], true);
+}
+function rawTex(w, h, px, repeat) {
+  const t = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, t);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(px));
+  const wrap = repeat ? gl.REPEAT : gl.CLAMP_TO_EDGE;
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, wrap); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, wrap);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+  return t;
+}
+function ensureTex(p) {
+  if (p.tex) return p.tex;
+  let src = p.canvas;
+  if (p.w > MAXTEX || p.h > MAXTEX) {
+    const k = MAXTEX / Math.max(p.w, p.h); src = mkCanvas(Math.floor(p.w * k), Math.floor(p.h * k));
+    src.getContext('2d').drawImage(p.canvas, 0, 0, src.width, src.height);
+  }
+  const t = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, t);
+  gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, src);
+  gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  return (p.tex = t);
+}
+function drawVerts(arr, mode, tex, col) {
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.uniform4fv(uCol, col);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(arr), gl.DYNAMIC_DRAW);
+  gl.drawArrays(mode, 0, arr.length / 4);
+}
+let renderQueued = false;
+function requestRender() { if (!renderQueued) { renderQueued = true; requestAnimationFrame(render); } }
+function render() {
+  renderQueued = false;
+  if (!gl) return;
+  const dpr = Math.min(window.devicePixelRatio || 1, 3);
+  const cw = canvas.clientWidth, ch = canvas.clientHeight;
+  const bw = Math.round(cw * dpr), bh = Math.round(ch * dpr);
+  if (canvas.width !== bw || canvas.height !== bh) { canvas.width = bw; canvas.height = bh; }
+  gl.viewport(0, 0, bw, bh);
+  gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT);
+  if (!App.doc) return;
+  gl.uniform2f(uRes, cw, ch);
+  gl.uniform3f(uCam, App.cam.s, App.cam.x, App.cam.y);
+  gl.uniform1f(uPs, 1);
+  const W = App.doc.w, H = App.doc.h, cu = W / 16, cv = H / 16;
+  drawVerts([0, 0, 0, 0, W, 0, cu, 0, 0, H, 0, cv, W, H, cu, cv], gl.TRIANGLE_STRIP, checkerTex, [1, 1, 1, 1]);
+  drawParts();
+  const p = App.sel;
+  if (p && p.visible) {
+    if (App.mode === 'deform' || App.showMesh) {
+      uploadPart(p);                                           // 選択パーツのメッシュを重ねて表示
+      gl.bindTexture(gl.TEXTURE_2D, whiteTex);
+      gl.uniform4fv(uCol, [.55, .26, .37, .55]);
+      gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, meshEdges(p.mesh), gl.DYNAMIC_DRAW);
+      gl.drawElements(gl.LINES, p.mesh.edges.length, gl.UNSIGNED_SHORT, 0);
+      gl.uniform1f(uPs, 4 * dpr); gl.uniform4fv(uCol, [1, .48, .66, 1]);
+      gl.drawArrays(gl.POINTS, 0, vcount(p));
+      gl.uniform1f(uPs, 1);
+    } else {
+      const [a, b, c, d] = corners(p);
+      drawVerts([a[0], a[1], 0, 0, b[0], b[1], 0, 0, d[0], d[1], 0, 0, c[0], c[1], 0, 0], gl.LINE_LOOP, whiteTex, [1, .48, .66, 1]);
+    }
+  }
+  if (App.brush) {                                             // 変形ブラシの円
+    const [bx, by] = toModel(App.brush), r = App.brush.r / App.cam.s, arr = [];
+    for (let i = 0; i < 48; i++) { const t = i / 48 * Math.PI * 2; arr.push(bx + Math.cos(t) * r, by + Math.sin(t) * r, 0, 0); }
+    drawVerts(arr, gl.LINE_LOOP, whiteTex, [1, 1, 1, .9]);
+  }
+}
+/* パーツのメッシュ頂点を GPU に送る */
+function uploadPart(p) {
+  const f = xform(p), V = p.mesh.verts, O = p.offs, n = V.length / 2, arr = new Float32Array(n * 4);
+  for (let i = 0; i < n; i++) {
+    const [X, Y] = f(V[2 * i] + (O ? O[2 * i] : 0), V[2 * i + 1] + (O ? O[2 * i + 1] : 0));
+    arr[4 * i] = X; arr[4 * i + 1] = Y; arr[4 * i + 2] = V[2 * i] / p.w; arr[4 * i + 3] = V[2 * i + 1] / p.h;
+  }
+  gl.bufferData(gl.ARRAY_BUFFER, arr, gl.DYNAMIC_DRAW);
+}
+function drawParts() {
+  for (const p of App.parts) {
+    if (!p.visible || p.opacity <= 0) continue;
+    const o = p.opacity;
+    uploadPart(p);
+    gl.bindTexture(gl.TEXTURE_2D, ensureTex(p));
+    gl.uniform4fv(uCol, [o, o, o, o]);
+    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, p.mesh.tris, gl.DYNAMIC_DRAW);
+    gl.drawElements(gl.TRIANGLES, p.mesh.tris.length, gl.UNSIGNED_SHORT, 0);
+  }
+}
+/* 変形込みで書き出すため、GPUで書き出し用の画像を描く */
+function renderToPixels() {
+  let W = App.doc.w, H = App.doc.h, k = 1;
+  if (W > MAXTEX || H > MAXTEX) { k = MAXTEX / Math.max(W, H); W = Math.floor(W * k); H = Math.floor(H * k); }
+  const tex = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, W, H, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  const fb = gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+  gl.viewport(0, 0, W, H); gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT);
+  gl.uniform2f(uRes, W, H); gl.uniform3f(uCam, k, 0, 0); gl.uniform1f(uPs, 1);
+  drawParts();
+  const px = new Uint8Array(W * H * 4);
+  gl.readPixels(0, 0, W, H, gl.RGBA, gl.UNSIGNED_BYTE, px);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.deleteFramebuffer(fb); gl.deleteTexture(tex);
+  const out = new ImageData(W, H), row = W * 4;
+  for (let y = 0; y < H; y++) {                    // 上下反転＋乗算済みアルファを元に戻す
+    const src = (H - 1 - y) * row, dst = y * row;
+    for (let x = 0; x < row; x += 4) {
+      const a = px[src + x + 3];
+      if (a) { const m = 255 / a; out.data[dst + x] = px[src + x] * m; out.data[dst + x + 1] = px[src + x + 1] * m; out.data[dst + x + 2] = px[src + x + 2] * m; out.data[dst + x + 3] = a; }
+    }
+  }
+  requestRender();
+  return out;
+}
+new ResizeObserver(() => requestRender()).observe(canvas);
+
+function fit() {
+  if (!App.doc) return;
+  const cw = canvas.clientWidth || 300, ch = canvas.clientHeight || 300, m = 24;
+  const s = Math.min((cw - m * 2) / App.doc.w, (ch - m * 2) / App.doc.h);
+  App.cam = { s, x: (cw - App.doc.w * s) / 2, y: (ch - App.doc.h * s) / 2 };
+  requestRender();
+}
+
+/* =========================================================
+   タッチ操作
+   ========================================================= */
+const ptrs = new Map(); let G = null;
+const local = e => { const r = canvas.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
+const toModel = pt => [(pt.x - App.cam.x) / App.cam.s, (pt.y - App.cam.y) / App.cam.s];
+
+canvas.addEventListener('pointerdown', e => {
+  if (!App.doc) return;
+  canvas.setPointerCapture(e.pointerId);
+  ptrs.set(e.pointerId, local(e));
+  if (ptrs.size === 1) {
+    const pt = local(e), [mx, my] = toModel(pt);
+    let target = null;
+    if (App.mode === 'deform' && App.sel && App.sel.visible) {
+      const d = startDeform(App.sel, pt);
+      if (d) { G = d; App.brush = { x: pt.x, y: pt.y, r: App.brushR }; requestRender(); return; }
+    }
+    if (App.mode === 'move') {
+      target = (App.sel && App.sel.visible && hitPart(App.sel, mx, my, true)) ? App.sel : pickPart(mx, my);
+      if (target && target !== App.sel) select(target);
+    }
+    G = { type: 'one', sx: pt.x, sy: pt.y, moved: false, target, ox: target ? target.x : 0, oy: target ? target.y : 0, cam: { ...App.cam } };
+  } else if (ptrs.size === 2) {
+    if (G && G.type === 'one' && G.moved && G.target) commit();
+    if (G && G.type === 'deform') { if (G.moved) commit(); else endDeformNoMove(G); App.brush = null; }
+    const [a, b] = [...ptrs.values()];
+    G = { type: 'pinch', d0: Math.hypot(a.x - b.x, a.y - b.y) || 1, m0: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, cam: { ...App.cam } };
+  }
+});
+canvas.addEventListener('pointermove', e => {
+  if (!ptrs.has(e.pointerId)) return;
+  ptrs.set(e.pointerId, local(e));
+  if (!G) return;
+  if (G.type === 'pinch' && ptrs.size >= 2) {
+    const [a, b] = [...ptrs.values()];
+    const d = Math.hypot(a.x - b.x, a.y - b.y), m = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+    const s = clamp(G.cam.s * d / G.d0, 0.02, 40);
+    const wx = (G.m0.x - G.cam.x) / G.cam.s, wy = (G.m0.y - G.cam.y) / G.cam.s;
+    App.cam = { s, x: m.x - wx * s, y: m.y - wy * s };
+    requestRender();
+  } else if (G.type === 'deform') {
+    const pt = ptrs.get(e.pointerId);
+    moveDeform(G, pt);
+    App.brush = { x: pt.x, y: pt.y, r: App.brushR };
+    requestRender();
+  } else if (G.type === 'one') {
+    const pt = ptrs.get(e.pointerId), dx = pt.x - G.sx, dy = pt.y - G.sy;
+    if (!G.moved && Math.hypot(dx, dy) > 6) G.moved = true;
+    if (!G.moved) return;
+    if (G.target) {
+      G.target.x = Math.round(G.ox + dx / App.cam.s); G.target.y = Math.round(G.oy + dy / App.cam.s); absorb(G.target);
+      updateProps(true);
+    } else {
+      App.cam.x = G.cam.x + dx; App.cam.y = G.cam.y + dy;
+    }
+    requestRender();
+  }
+});
+function endPtr(e) {
+  if (!ptrs.has(e.pointerId)) return;
+  ptrs.delete(e.pointerId);
+  if (!G) return;
+  if (G.type === 'one') {
+    if (!G.moved && e.type === 'pointerup') {
+      const [mx, my] = toModel({ x: G.sx, y: G.sy });
+      if (!(App.mode === 'move' && G.target)) select(pickPart(mx, my));
+    } else if (G.moved && G.target) commit();
+    G = null;
+  } else if (G.type === 'deform') {
+    if (G.moved) commit(); else endDeformNoMove(G);
+    App.brush = null; G = null; requestRender();
+  } else if (G.type === 'pinch') {
+    G = ptrs.size ? { type: 'idle' } : null;
+  } else if (!ptrs.size) G = null;
+}
+canvas.addEventListener('pointerup', endPtr);
+canvas.addEventListener('pointercancel', endPtr);
+canvas.addEventListener('wheel', e => {
+  if (!App.doc) return; e.preventDefault();
+  const pt = local(e), s = clamp(App.cam.s * Math.exp(-e.deltaY * 0.0015), 0.02, 40);
+  const wx = (pt.x - App.cam.x) / App.cam.s, wy = (pt.y - App.cam.y) / App.cam.s;
+  App.cam = { s, x: pt.x - wx * s, y: pt.y - wy * s }; requestRender();
+}, { passive: false });
+document.addEventListener('gesturestart', e => e.preventDefault());
+
+/* ---------- 変形ブラシ ---------- */
+App.brushR = 60;          // ブラシ半径（画面上のpx）
+App.showMesh = false;
+App.brush = null;
+function startDeform(p, pt) {
+  let meshChanged = false;
+  if (vcount(p) === 4 && !hasAnyOffs(p)) { p.mesh = autoMesh(p, p.div); evaluate(p); meshChanged = true; }   // 四角のままなら自動でメッシュを張る
+  const [mx, my] = toModel(pt), [lx, ly] = toLocal(p, mx, my);
+  const k = App.cam.s * p.scale, R = App.brushR / k, tol = 18 / k;
+  const V = p.mesh.verts, O = p.offs, n = V.length / 2, idx = [], w = [];
+  let near = -1, nd = Infinity;
+  for (let i = 0; i < n; i++) {
+    const x = V[2 * i] + (O ? O[2 * i] : 0), y = V[2 * i + 1] + (O ? O[2 * i + 1] : 0), d = Math.hypot(x - lx, y - ly);
+    if (d < nd) { nd = d; near = i; }
+    if (d < R) { const t = d / R; idx.push(i); w.push((1 - t * t) * (1 - t * t)); }
+  }
+  if (nd > Math.max(R, tol)) {                     // 頂点に届いていない → 画面移動などに回す
+    if (meshChanged) { commit(); requestRender(); }
+    return null;
+  }
+  const j = idx.indexOf(near);
+  if (j >= 0) w[j] = 1; else { idx.push(near); w.push(1); }   // 一番近い頂点は必ずしっかり動く
+  const orig = p.offs, base = O ? O : new Float32Array(V.length);
+  const buf = Float32Array.from(base);              // ドラッグ中に書き込む配列（揺れの計算が表示を作り直しても失われない）
+  p.offs = buf;
+  return { type: 'deform', part: p, sx: pt.x, sy: pt.y, base, buf, orig, idx, w, moved: false, meshChanged };
+}
+function moveDeform(g, pt) {
+  const p = g.part, k = App.cam.s * p.scale, sdx = pt.x - g.sx, sdy = pt.y - g.sy;
+  if (!g.moved && Math.hypot(sdx, sdy) < 3) return;
+  g.moved = true;
+  const r = -p.rot * Math.PI / 180, c = Math.cos(r), s = Math.sin(r);
+  const dx = (sdx * c - sdy * s) / k, dy = (sdx * s + sdy * c) / k;
+  p.offs = g.buf;
+  for (let n = 0; n < g.idx.length; n++) {
+    const i = g.idx[n], wt = g.w[n];
+    p.offs[2 * i] = g.base[2 * i] + dx * wt; p.offs[2 * i + 1] = g.base[2 * i + 1] + dy * wt;
+  }
+  absorb(p);
+}
+function endDeformNoMove(g) { if (!g.moved) { g.part.offs = g.orig; if (g.meshChanged) commit(); } }
+
+function setMode(m) {
+  App.mode = m;
+  $('#modeView').classList.toggle('on', m === 'view');
+  $('#modeMove').classList.toggle('on', m === 'move');
+  $('#modeDeform').classList.toggle('on', m === 'deform');
+  $('#deformBar').classList.toggle('hidden', m !== 'deform' || !App.doc);
+  const pill = $('#modePill'), q = App.params.find(q => q.id === App.editParam), t = editTarget();
+  pill.classList.toggle('key', !!t);
+  if (q && App.doc) {
+    pill.textContent = t ? `「${q.name}」= ${fmtV(q.value)} のキーを編集中` : `「${q.name}」編集中：いまは基本の形（スライダーを動かして）`;
+    pill.classList.remove('hidden'); requestRender(); return;
+  }
+  pill.textContent = m === 'move' ? 'パーツをドラッグで移動 ・ 2本指でズーム'
+    : m === 'deform' ? (App.sel ? '頂点をなぞって変形 ・ 外側をドラッグで画面移動' : 'まず変形したいパーツをタップ')
+    : 'ドラッグで画面移動 ・ 2本指でズーム ・ タップで選択';
+  pill.classList.toggle('hidden', !App.doc);
+  requestRender();
+}
+
+/* =========================================================
+   選択・一覧・プロパティ
+   ========================================================= */
+function select(p) {
+  App.sel = p || null;
+  for (const li of document.querySelectorAll('#partList li.p')) li.classList.toggle('sel', App.sel && +li.dataset.id === App.sel.id);
+  const li = App.sel && document.querySelector(`#partList li.p[data-id="${App.sel.id}"]`);
+  if (li) li.scrollIntoView({ block: 'nearest' });
+  updateProps(); setMode(App.mode);
+}
+const EYE = '<svg class="i" viewBox="0 0 24 24"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>';
+const EYE_OFF = '<svg class="i" viewBox="0 0 24 24" style="opacity:.5"><path d="M3 3l18 18"/><path d="M10.6 5.1A10 10 0 0112 5c6 0 10 7 10 7a17 17 0 01-3.2 3.9M6.6 6.6C3.9 8.3 2 12 2 12s4 7 10 7a9.6 9.6 0 005.4-1.6"/></svg>';
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+function renderList() {
+  const ul = $('#partList'); let html = '', lastG = null;
+  for (let i = App.parts.length - 1; i >= 0; i--) {
+    const p = App.parts[i];
+    if (p.group !== lastG) { if (p.group) html += `<li class="grp">${esc(p.group)}</li>`; lastG = p.group; }
+    html += `<li class="p${p === App.sel ? ' sel' : ''}${p.visible ? '' : ' off'}" data-id="${p.id}">
+      <button class="vis" data-vis="${p.id}" aria-label="表示切替">${p.visible ? EYE : EYE_OFF}</button>
+      <img src="${p.thumb}" alt=""><div class="nm${App.editParam && p.binds[App.editParam] ? ' bound' : ''}">${esc(p.name)}</div></li>`;
+  }
+  ul.innerHTML = html || '<li class="grp">パーツがありません</li>';
+}
+$('#partList').addEventListener('click', e => {
+  const vb = e.target.closest('[data-vis]');
+  if (vb) { const p = App.byId.get(+vb.dataset.vis); p.visible = !p.visible; commit(); renderList(); updateProps(); requestRender(); return; }
+  const li = e.target.closest('li.p'); if (!li) return;
+  select(App.byId.get(+li.dataset.id));
+});
+
+function updateProps(live) {
+  const p = App.sel;
+  $('#pEmpty').classList.toggle('hidden', !!p); $('#pBody').classList.toggle('hidden', !p);
+  if (!p) return;
+  const set = (id, v) => { const el = $(id); if (document.activeElement !== el || live) el.value = v; };
+  if (document.activeElement !== $('#pName')) $('#pName').value = p.name;
+  const t = editTarget(), q = App.params.find(q => q.id === App.editParam), tg = $('#pTarget');
+  tg.classList.toggle('key', !!t);
+  tg.textContent = t ? `編集先：「${q.name}」= ${fmtV(q.value)} のキー（ここでの変更はこの値だけに効きます）`
+    : q ? `編集先：基本の形（「${q.name}」のスライダーを動かすとキー編集になります）` : '編集先：基本の形';
+  $('#pGroup').textContent = p.group ? 'グループ：' + p.group : '';
+  set('#pX', Math.round(p.x)); set('#pY', Math.round(p.y));
+  set('#pRot', p.rot); $('#pRotV').textContent = Math.round(p.rot) + '°';
+  set('#pScale', p.scale); $('#pScaleV').textContent = Math.round(p.scale * 100) + '%';
+  set('#pOp', p.opacity); $('#pOpV').textContent = Math.round(p.opacity * 100) + '%';
+  $('#pVis').textContent = p.visible ? '非表示にする' : '表示する';
+  const i = App.parts.indexOf(p);
+  $('#pUp').disabled = i >= App.parts.length - 1; $('#pDown').disabled = i <= 0;
+  $('#mInfo').textContent = `頂点${vcount(p)} ・ 三角形${p.mesh.tris.length / 3}${p.offs ? ' ・ 変形あり' : ''}`;
+  set('#mDiv', p.div); $('#mDivV').textContent = p.div;
+  $('#mQuad').disabled = vcount(p) === 4;
+  const ts = targetState(p);
+  $('#mResetDef').disabled = !(ts && ts.offs);
+  $('#mShow').classList.toggle('on', App.showMesh);
+  $('#dbMesh').classList.toggle('on', App.showMesh);
+}
+/* メッシュ操作 */
+function regenMesh(p, quad) {
+  if (hasAnyOffs(p) && !confirm(`「${p.name}」の変形（パラメータのキーも含む）がリセットされます。よろしいですか？`)) return false;
+  p.mesh = quad ? quadMesh(p.w, p.h) : autoMesh(p, p.div); clearAllOffs(p);
+  return true;
+}
+$('#mDiv').addEventListener('input', e => { if (App.sel) { $('#mDivV').textContent = e.target.value; } });
+$('#mDiv').addEventListener('change', e => {
+  const p = App.sel; if (!p) return;
+  const old = p.div; p.div = +e.target.value;
+  if (vcount(p) > 4 || !hasAnyOffs(p)) { if (!regenMesh(p)) p.div = old; }   // 生成済みなら作り直す
+  commit(); updateProps(); requestRender();
+});
+$('#mAuto').onclick = () => { const p = App.sel; if (p && regenMesh(p)) { App.showMesh = true; commit(); updateProps(); requestRender(); toast(`頂点${vcount(p)}個のメッシュを作りました`); } };
+$('#mQuad').onclick = () => { const p = App.sel; if (p && regenMesh(p, true)) { commit(); updateProps(); requestRender(); } };
+$('#mShow').onclick = $('#dbMesh').onclick = () => { App.showMesh = !App.showMesh; updateProps(); requestRender(); };
+$('#mResetDef').onclick = $('#dbReset').onclick = () => {
+  const p = App.sel, ts = p && targetState(p); if (!ts || !ts.offs) return toast('ここでは変形していません');
+  patchTarget(p, { offs: null }); commit(); updateProps(); requestRender(); toast('変形をリセットしました');
+};
+$('#brushR').addEventListener('input', e => {
+  App.brushR = +e.target.value;
+  const r = canvas.getBoundingClientRect();
+  App.brush = { x: r.width / 2, y: r.height / 2, r: App.brushR }; requestRender();   // 大きさの目安を表示
+});
+$('#brushR').addEventListener('change', () => { App.brush = null; requestRender(); });
+const bindNum = (id, key, conv = Number) => {
+  $(id).addEventListener('input', e => { if (!App.sel) return; const v = conv(e.target.value); if (isNaN(v)) return; App.sel[key] = v; absorb(App.sel); updateProps(true); requestRender(); });
+  $(id).addEventListener('change', () => App.sel && commit());
+};
+bindNum('#pX', 'x'); bindNum('#pY', 'y'); bindNum('#pRot', 'rot'); bindNum('#pScale', 'scale'); bindNum('#pOp', 'opacity');
+$('#pName').addEventListener('input', e => { if (App.sel) App.sel.name = e.target.value; });
+$('#pName').addEventListener('change', () => { if (App.sel) { commit(); renderList(); } });
+$('#pVis').onclick = () => { const p = App.sel; if (!p) return; p.visible = !p.visible; commit(); renderList(); updateProps(); requestRender(); };
+function moveOrder(dir) {
+  const p = App.sel; if (!p) return; const i = App.parts.indexOf(p), j = i + dir;
+  if (j < 0 || j >= App.parts.length) return;
+  [App.parts[i], App.parts[j]] = [App.parts[j], App.parts[i]];
+  commit(); renderList(); updateProps(); requestRender();
+}
+$('#pUp').onclick = () => moveOrder(1);
+$('#pDown').onclick = () => moveOrder(-1);
+$('#pReset').onclick = () => { const p = App.sel; if (!p) return; patchTarget(p, editTarget() ? { x: 0, y: 0, rot: 0, scale: 0, opacity: 0 } : { x: 0, y: 0, rot: 0, scale: 1 }); commit(); updateProps(); requestRender(); };
+$('#pSplit').onclick = () => openSplit();
+$('#pDel').onclick = () => {
+  const p = App.sel; if (!p) return;
+  App.parts.splice(App.parts.indexOf(p), 1); App.sel = null;
+  commit(); renderList(); updateProps(); requestRender(); toast(`「${p.name}」を削除しました（元に戻せます）`);
+};
+
+/* =========================================================
+   元に戻す / やり直す
+   ========================================================= */
+function snapshot() {
+  const st = {};
+  // mesh と offs は「書き換えずに差し替える」約束なので参照だけ持てば足りる
+  for (const p of App.parts) st[p.id] = [p.visible, p.name, p.mesh, p.div, p.base, p.binds];
+  const params = JSON.stringify(App.params.map(({ id, name, min, max, def }) => ({ id, name, min, max, def })));
+  const extra = JSON.stringify({ physics: App.physics, motions: App.motions });
+  return { order: App.parts.map(p => p.id), st, params, extra };
+}
+function restore(s) {
+  App.parts = s.order.map(id => App.byId.get(id)).filter(Boolean);
+  for (const p of App.parts) { const v = s.st[p.id]; if (v) [p.visible, p.name, p.mesh, p.div, p.base, p.binds] = v; }
+  const vals = new Map(App.params.map(q => [q.id, q.value]));
+  App.params = JSON.parse(s.params).map(q => ({ ...q, value: vals.has(q.id) ? clamp(vals.get(q.id), q.min, q.max) : q.def }));
+  if (!App.params.some(q => q.id === App.editParam)) App.editParam = null;
+  const ex = JSON.parse(s.extra); App.physics = ex.physics; App.motions = ex.motions;
+  if (!App.motions.some(m => m.id === App.curMotion)) App.curMotion = App.motions[0] ? App.motions[0].id : null;
+  if (App.sel && !App.parts.includes(App.sel)) App.sel = null;
+  evaluateAll();
+}
+function sameSnap(a, b) {
+  if (!a || a.order.length !== b.order.length || a.params !== b.params || a.extra !== b.extra) return false;
+  for (let i = 0; i < a.order.length; i++) {
+    if (a.order[i] !== b.order[i]) return false;
+    const x = a.st[a.order[i]], y = b.st[b.order[i]];
+    for (let k = 0; k < x.length; k++) if (x[k] !== y[k]) return false;
+  }
+  return true;
+}
+function commit() {
+  const now = snapshot();
+  if (sameSnap(App.last, now)) return;
+  if (App.last) App.undo.push(App.last);
+  if (App.undo.length > 200) App.undo.shift();
+  App.redo = []; App.last = now;
+  if (App.editParam) { renderList(); const q = App.params.find(q => q.id === App.editParam); if (q) refreshParamUI(q); }
+  updateUndoBtns(); scheduleSave();
+}
+function undo() { if (!App.undo.length) return; App.redo.push(App.last); App.last = App.undo.pop(); restore(App.last); afterHistory(); }
+function redo() { if (!App.redo.length) return; App.undo.push(App.last); App.last = App.redo.pop(); restore(App.last); afterHistory(); }
+function afterHistory() { renderList(); renderParams(); renderPhys(); renderMotion(); updateProps(); updateUndoBtns(); setMode(App.mode); scheduleSave(); }
+function updateUndoBtns() { $('#undoBtn').disabled = !App.undo.length; $('#redoBtn').disabled = !App.redo.length; }
+$('#undoBtn').onclick = undo; $('#redoBtn').onclick = redo;
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT') return;
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); e.shiftKey ? redo() : undo(); }
+});
+
+/* =========================================================
+   自動保存（IndexedDB）
+   ========================================================= */
+const DB = {
+  open() {
+    return this.p || (this.p = new Promise((res, rej) => {
+      const r = indexedDB.open('pocketrig', 1);
+      r.onupgradeneeded = () => r.result.createObjectStore('kv');
+      r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+    }));
+  },
+  async run(mode, fn) {
+    const db = await this.open();
+    return new Promise((res, rej) => { const tx = db.transaction('kv', mode); const r = fn(tx.objectStore('kv')); tx.oncomplete = () => res(r && r.result); tx.onerror = () => rej(tx.error); });
+  },
+  put(k, v) { return this.run('readwrite', s => s.put(v, k)); },
+  get(k) { return this.run('readonly', s => s.get(k)); },
+  del(k) { return this.run('readwrite', s => s.delete(k)); },
+};
+const rigData = () => ({ physics: App.physics, physOn: App.physOn, motions: App.motions, curMotion: App.curMotion, roleMap: App.roleMap });
+const paramsData = () => App.params.map(({ id, name, min, max, def, value }) => ({ id, name, min, max, def, value }));
+const toBlob = c => new Promise(r => c.toBlob(r, 'image/png'));
+/* メッシュを保存用の形にする（json は通常の配列、自動保存は型付き配列のまま） */
+function meshData(p, plain) {
+  const cv = a => a && (plain ? Array.from(a, v => Math.round(v * 100) / 100) : a.slice());
+  return { div: p.div, mesh: { verts: cv(p.mesh.verts), tris: plain ? Array.from(p.mesh.tris) : p.mesh.tris.slice() }, offs: p.base.offs ? cv(p.base.offs) : null, binds: serializeBinds(p, plain) };
+}
+let saveTimer = null, saving = Promise.resolve();
+function scheduleSave() { clearTimeout(saveTimer); saveTimer = setTimeout(() => { saving = saving.then(saveNow).catch(err => console.warn('autosave', err)); }, 700); }
+async function saveNow() {
+  if (!App.doc) { await DB.del('project'); return; }
+  for (const p of App.parts) if (!p.blob) p.blob = await toBlob(p.canvas);
+  await DB.put('project', {
+    v: 1, doc: App.doc, sel: App.sel ? App.sel.id : null, params: paramsData(), ...rigData(),
+    parts: App.parts.map(p => ({ id: p.id, name: p.name, group: p.group, blend: p.blend, left: p.left, top: p.top, x: p.base.x, y: p.base.y, rot: p.base.rot, scale: p.base.scale, opacity: p.base.opacity, visible: p.visible, blob: p.blob, ...meshData(p, false) }))
+  });
+}
+async function blobToCanvas(blob) {
+  let img;
+  try { img = await createImageBitmap(blob); }
+  catch (e) { img = await new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = rej; im.src = URL.createObjectURL(blob); }); }
+  const c = mkCanvas(img.width, img.height); c.getContext('2d').drawImage(img, 0, 0); return c;
+}
+async function restoreAutosave() {
+  try {
+    const data = await DB.get('project');
+    if (!data || !data.parts) return;
+    loading(true, '前回の作業を復元中…');
+    const defs = [];
+    for (const d of data.parts) defs.push({ ...d, canvas: await blobToCanvas(d.blob), trim: false });
+    await setDoc(data.doc, defs, { ...data, noSave: true, sel: data.sel });
+    toast('前回の作業を復元しました');
+  } catch (e) { console.warn(e); }
+  finally { loading(false); }
+}
+
+/* =========================================================
+   読み込み
+   ========================================================= */
+async function openFiles(files) {
+  if (App.doc && !confirm('いまの作業を閉じて新しく開きますか？\n（必要なら先に「プロジェクトを保存」してください）')) return;
+  const f = files[0];
+  const head = new Uint8Array(await f.slice(0, 4).arrayBuffer());
+  const sig = String.fromCharCode(...head);
+  try {
+    if (sig === '8BPS') await importPSD(f);
+    else if (head[0] === 0x7b || /\.json$/i.test(f.name)) await importProject(f);
+    else {
+      const imgs = files.filter(x => /^image\//.test(x.type) || /\.(png|jpe?g|webp|gif)$/i.test(x.name));
+      if (!imgs.length) throw new Error('対応していないファイルです（PSD・PNG・プロジェクト.jsonに対応）');
+      await importImages(imgs);
+    }
+  } catch (e) { console.error(e); toast('読み込めませんでした：' + e.message, 5000); }
+  finally { loading(false); }
+}
+async function importPSD(file) {
+  loading(true, 'PSDを読み込み中…'); await tick();
+  const buf = await file.arrayBuffer();
+  const psd = await parsePSD(buf, async r => { loading(true, `レイヤーを展開中… ${Math.round(r * 100)}%`); await tick(); });
+  let defs, info = { clipped: 0, blends: 0 };
+  if (psd.merged) defs = [{ canvas: rgbaToCanvas(psd.merged.rgba, psd.merged.w, psd.merged.h), name: '画像全体' }];
+  else ({ defs, info } = psdToDefs(psd));
+  if (!defs.length) throw new Error('絵の入ったレイヤーが見つかりません');
+  await setDoc({ name: file.name.replace(/\.psd$/i, ''), w: psd.width, h: psd.height }, defs);
+  const notes = [];
+  if (psd.merged) notes.push('レイヤー情報が無いため1枚の画像として開きました');
+  if (info.clipped) notes.push(`クリッピング${info.clipped}枚を下のパーツに合成`);
+  if (info.blends) notes.push(`乗算などの合成モード${info.blends}枚は通常表示`);
+  toast(`${App.parts.length}パーツを読み込みました` + (notes.length ? '\n' + notes.join('・') : ''), 4500);
+  if (App.parts.length === 1) offerSplit();
+}
+async function importImages(files) {
+  loading(true, '画像を読み込み中…');
+  const defs = []; let W = 0, H = 0;
+  for (const f of files) {
+    const c = await blobToCanvas(f);
+    W = Math.max(W, c.width); H = Math.max(H, c.height);
+    defs.push({ canvas: c, name: f.name.replace(/\.[^.]+$/, '') });
+  }
+  await setDoc({ name: files.length === 1 ? defs[0].name : '画像パーツ', w: W, h: H }, defs);
+  if (App.parts.length === 1) offerSplit(); else toast(`${App.parts.length}パーツを読み込みました`);
+}
+async function importProject(file) {
+  loading(true, 'プロジェクトを読み込み中…');
+  const data = JSON.parse(await file.text());
+  if (data.app !== 'PocketRig' || !Array.isArray(data.parts)) throw new Error('ポケットリグのプロジェクトではありません');
+  const defs = [];
+  for (const d of data.parts) {
+    const blob = await (await fetch(d.png)).blob();
+    defs.push({ ...d, blob, canvas: await blobToCanvas(blob), trim: false });
+  }
+  await setDoc(data.doc, defs, { ...data, sel: null });
+  toast('プロジェクトを開きました');
+}
+
+/* =========================================================
+   保存・書き出し
+   ========================================================= */
+function download(blob, name) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.appendChild(a); a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 5000);
+}
+function saveProject() {
+  if (!App.doc) return toast('まだ何も開いていません');
+  const data = {
+    app: 'PocketRig', version: 4, doc: App.doc, params: paramsData(), ...rigData(),
+    parts: App.parts.map(p => ({ id: p.id, name: p.name, group: p.group, blend: p.blend, left: p.left, top: p.top, x: p.base.x, y: p.base.y, rot: p.base.rot, scale: p.base.scale, opacity: p.base.opacity, visible: p.visible, ...meshData(p, true), png: p.canvas.toDataURL('image/png') }))
+  };
+  download(new Blob([JSON.stringify(data)], { type: 'application/json' }), `${App.doc.name}.pocketrig.json`);
+  toast('プロジェクトを保存しました');
+}
+async function exportPNG() {
+  if (!App.doc) return toast('まだ何も開いていません');
+  const img = renderToPixels(), c = mkCanvas(img.width, img.height);
+  c.getContext('2d').putImageData(img, 0, 0);
+  download(await toBlob(c), `${App.doc.name}.png`);
+  toast('PNGを書き出しました');
+}
+
+/* =========================================================
+   サンプルキャラクター
+   ========================================================= */
+function samplePart(name, group, left, top, w, h, draw, extra = {}) {
+  const c = mkCanvas(w, h), x = c.getContext('2d');
+  x.lineJoin = 'round'; x.lineCap = 'round'; draw(x);
+  return { canvas: c, name, group, left, top, ...extra };
+}
+function sampleDefs() {
+  const HAIR = '#5a3d33', SKIN = '#ffe6d6', LINE = '#3b2a26';
+  const fs = (x, fill) => { x.fillStyle = fill; x.fill(); x.strokeStyle = LINE; x.lineWidth = 4; x.stroke(); };
+  const eye = x => {
+    x.beginPath(); x.ellipse(28, 36, 24, 32, 0, 0, 7); fs(x, '#fff');
+    x.beginPath(); x.ellipse(28, 40, 17, 25, 0, 0, 7); x.fillStyle = '#6a5ae0'; x.fill();
+    x.beginPath(); x.ellipse(28, 44, 9, 14, 0, 0, 7); x.fillStyle = '#2b2160'; x.fill();
+    x.beginPath(); x.arc(20, 30, 6, 0, 7); x.fillStyle = '#fff'; x.fill();
+  };
+  return [
+    samplePart('後ろ髪', '頭', 118, 118, 364, 430, x => {
+      x.beginPath(); x.moveTo(8, 180); x.bezierCurveTo(8, -40, 356, -40, 356, 180);
+      x.lineTo(350, 400); x.quadraticCurveTo(300, 425, 270, 395); x.lineTo(94, 395); x.quadraticCurveTo(64, 425, 14, 400); x.closePath(); fs(x, HAIR);
+    }),
+    samplePart('体', '体', 145, 470, 310, 330, x => {
+      x.beginPath(); x.moveTo(100, 12); x.lineTo(210, 12); x.quadraticCurveTo(300, 40, 300, 160); x.lineTo(302, 325); x.lineTo(8, 325);
+      x.lineTo(10, 160); x.quadraticCurveTo(10, 40, 100, 12); x.closePath(); fs(x, '#7aa2f7');
+      x.beginPath(); x.moveTo(110, 14); x.lineTo(155, 90); x.lineTo(200, 14); fs(x, '#fff');
+      x.beginPath(); x.moveTo(140, 110); x.lineTo(155, 95); x.lineTo(170, 110); x.lineTo(155, 150); x.closePath(); fs(x, '#ff7aa8');
+    }),
+    samplePart('首', '体', 268, 420, 64, 80, x => { x.beginPath(); x.roundRect(4, 0, 56, 76, 14); fs(x, SKIN); }),
+    samplePart('顔', '頭', 158, 168, 284, 304, x => { x.beginPath(); x.ellipse(142, 150, 136, 146, 0, 0, 7); fs(x, SKIN); }),
+    samplePart('頬', '頭/顔', 196, 372, 208, 36, x => {
+      for (const cx of [30, 178]) { const g = x.createRadialGradient(cx, 18, 2, cx, 18, 28); g.addColorStop(0, 'rgba(255,120,150,.8)'); g.addColorStop(1, 'rgba(255,120,150,0)'); x.fillStyle = g; x.fillRect(cx - 30, 0, 60, 36); }
+    }, { opacity: 0.8 }),
+    samplePart('左目', '頭/顔', 212, 296, 58, 74, eye),
+    samplePart('右目', '頭/顔', 330, 296, 58, 74, eye),
+    samplePart('口', '頭/顔', 272, 402, 56, 30, x => { x.beginPath(); x.moveTo(8, 8); x.quadraticCurveTo(28, 30, 48, 8); x.strokeStyle = LINE; x.lineWidth = 4; x.stroke(); }),
+    samplePart('前髪', '頭', 136, 124, 328, 190, x => {
+      x.beginPath(); x.moveTo(10, 170); x.bezierCurveTo(-4, 10, 332, 10, 318, 170);
+      x.lineTo(282, 100); x.lineTo(250, 178); x.lineTo(206, 92); x.lineTo(164, 160); x.lineTo(122, 92); x.lineTo(80, 178); x.lineTo(48, 100); x.closePath(); fs(x, HAIR);
+    }),
+    samplePart('アホ毛', '頭', 282, 52, 70, 100, x => {
+      x.beginPath(); x.moveTo(20, 96); x.bezierCurveTo(0, 40, 70, 40, 50, 6); x.bezierCurveTo(60, 50, 34, 50, 40, 96); x.closePath(); fs(x, HAIR);
+    }),
+  ];
+}
+/* サンプルに「目の開閉」「顔の向き」を最初から付けておく */
+function addSampleRig() {
+  const P = n => App.parts.find(p => p.name === n), Z = { x: 0, y: 0, rot: 0, scale: 0, opacity: 0, offs: null };
+  const blink = { id: App.nextParamId++, name: '目の開閉', min: 0, max: 1, def: 1, value: 1 };
+  const turn = { id: App.nextParamId++, name: '顔の向き 左右', min: -30, max: 30, def: 0, value: 0 };
+  App.params = [blink, turn];
+  for (const n of ['左目', '右目']) {
+    const p = P(n); p.mesh = autoMesh(p, 8);
+    const V = p.mesh.verts, o = new Float32Array(V.length), cy = p.h * 0.62;
+    for (let i = 1; i < V.length; i += 2) o[i] = (cy - V[i]) * 0.92;      // 縦につぶして閉じ目に
+    p.binds = { [blink.id]: { '0': { ...Z, offs: o } } };
+  }
+  for (const [n, dx] of [['左目', 16], ['右目', 16], ['口', 14], ['頬', 12], ['前髪', 9], ['アホ毛', 7], ['顔', 4], ['後ろ髪', -6]]) {
+    const p = P(n);
+    p.binds = { ...p.binds, [turn.id]: { '30': { ...Z, x: dx }, '-30': { ...Z, x: -dx } } };
+  }
+  // 髪揺れ：アホ毛は回転、後ろ髪は下ほど横にずれる
+  const sway = { id: App.nextParamId++, name: '髪揺れ', min: -1, max: 1, def: 0, value: 0 };
+  App.params.push(sway);
+  const ah = P('アホ毛');
+  ah.binds = { ...ah.binds, [sway.id]: { '1': { ...Z, rot: 22 }, '-1': { ...Z, rot: -22 } } };
+  for (const [n, amt] of [['後ろ髪', 34], ['前髪', 8]]) {
+    const p = P(n); p.mesh = autoMesh(p, 10);
+    const V = p.mesh.verts, o = new Float32Array(V.length);
+    for (let i = 0; i < V.length; i += 2) o[i] = Math.pow(V[i + 1] / p.h, 1.6) * amt;
+    p.binds = { ...p.binds, [sway.id]: { '1': { ...Z, offs: o }, '-1': { ...Z, offs: o.map(v => -v) } } };
+  }
+  App.physics = [{ id: App.nextPhysId++, name: '髪の揺れ', inp: turn.id, out: sway.id, len: 0.55, damp: 3, str: 1, inv: false }];
+  // 首ふり＋まばたきのモーション
+  App.motions = [{
+    id: App.nextMotionId++, name: '首ふりとまばたき', dur: 4, loop: true, tracks: {
+      [turn.id]: [[0, 0], [0.8, 24], [1.8, 24], [2.8, -24], [3.4, -24], [4, 0]],
+      [blink.id]: [[0, 1], [1.2, 1], [1.28, 0], [1.36, 0], [1.44, 1], [3.6, 1], [3.68, 0], [3.76, 0], [3.84, 1]],
+    }
+  }];
+  App.curMotion = App.motions[0].id;
+  evaluateAll(); App.last = snapshot(); renderParams(); renderPhys(); renderMotion(); scheduleSave();
+}
+async function openSample() {
+  if (App.doc && !confirm('いまの作業を閉じてサンプルを開きますか？')) return;
+  loading(true, 'サンプルを準備中…'); await tick();
+  try {
+    await setDoc({ name: 'サンプル', w: 600, h: 800 }, sampleDefs());
+    addSampleRig();
+    toast('サンプルを開きました。「動き」タブの ▶ 再生 を押してみてください', 4000);
+  }
+  finally { loading(false); }
+}
+
+/* =========================================================
+   UI配線
+   ========================================================= */
+function openSheet(on) { $('#sheet').classList.toggle('hidden', !on); requestRender(); }
+function showTab(t) {
+  for (const b of document.querySelectorAll('.tabs [data-tab]')) b.classList.toggle('on', b.dataset.tab === t);
+  for (const k of ['parts', 'props', 'params', 'motion']) $('#' + k + 'Pane').classList.toggle('hidden', t !== k);
+  if (t === 'motion') renderMotion();
+  if (t === 'params') renderPhys();
+}
+
+/* ---------- 選択肢シート ---------- */
+function showActions(title, items) {
+  $('#asTitle').textContent = title;
+  const body = $('#asBody'); body.innerHTML = '';
+  for (const it of items) {
+    const b = document.createElement('button');
+    b.innerHTML = esc(it.label) + (it.sub ? `<small>${esc(it.sub)}</small>` : '');
+    if (it.danger) b.className = 'danger';
+    b.onclick = () => { $('#actSheet').classList.add('hidden'); it.fn(); };
+    body.appendChild(b);
+  }
+  $('#actSheet').classList.remove('hidden');
+}
+$('#asCancel').onclick = () => $('#actSheet').classList.add('hidden');
+$('#actSheet').addEventListener('click', e => { if (e.target.id === 'actSheet') $('#actSheet').classList.add('hidden'); });
+
+/* =========================================================
+   パラメータ画面
+   ========================================================= */
+const fmtV = v => Math.abs(v) >= 10 ? v.toFixed(0) : v.toFixed(2);
+const PRESETS = [
+  { name: '左目の開閉', min: 0, max: 1, def: 1, sub: '0＝閉じる / 1＝開く' },
+  { name: '右目の開閉', min: 0, max: 1, def: 1, sub: '0＝閉じる / 1＝開く' },
+  { name: '口の開閉', min: 0, max: 1, def: 0, sub: '0＝閉じる / 1＝開く' },
+  { name: '顔の向き 左右', min: -30, max: 30, def: 0, sub: '-30〜30' },
+  { name: '顔の向き 上下', min: -30, max: 30, def: 0, sub: '-30〜30' },
+  { name: '体の向き 左右', min: -10, max: 10, def: 0, sub: '-10〜10' },
+  { name: '髪揺れ', min: -1, max: 1, def: 0, sub: '-1〜1' },
+];
+function addParam(def) {
+  let name = def.name, n = 2;
+  while (App.params.some(q => q.name === name)) name = `${def.name} ${n++}`;
+  const q = { id: App.nextParamId++, name, min: def.min, max: def.max, def: def.def, value: def.def };
+  App.params = [...App.params, q];
+  App.editParam = q.id;
+  commit(); renderParams(); setMode(App.mode); updateProps();
+  toast(`「${name}」を作りました。\nスライダーを動かしてから、変形や移動で形を作るとキーが登録されます`, 5000);
+}
+$('#addParam').onclick = () => {
+  if (!App.doc) return toast('まだ何も開いていません');
+  showActions('パラメータを追加', [
+    ...PRESETS.map(p => ({ label: p.name, sub: p.sub, fn: () => addParam(p) })),
+    {
+      label: '自由に作る', sub: '名前と範囲を自分で決める', fn: () => {
+        const name = prompt('パラメータの名前', 'パラメータ'); if (!name) return;
+        const r = parseRange(prompt('最小,最大,初期値（半角カンマ区切り）', '0,1,0')); if (!r) return;
+        addParam({ name, ...r });
+      }
+    },
+  ]);
+};
+function parseRange(s) {
+  if (!s) return null;
+  const [min, max, def] = s.split(/[,，、\s]+/).map(Number);
+  if ([min, max, def].some(isNaN) || min >= max || def < min || def > max) { toast('「最小,最大,初期値」の順で、最小＜最大、初期値はその範囲内で入力してください', 4000); return null; }
+  return { min, max, def };
+}
+function renderParams() {
+  const el = $('#paramList');
+  if (!App.params.length) {
+    el.innerHTML = '<div class="prm-empty">パラメータがありません。<br>上の「✨ おまかせ」でまとめて作るか、「＋ 追加」で「目の開閉」などを作り、スライダーの値ごとに形を登録すると、その間がなめらかにアニメーションします。</div>';
+    return;
+  }
+  el.innerHTML = App.params.map(q => {
+    const armed = q.id === App.editParam, step = (q.max - q.min) / 200;
+    return `<div class="prm${armed ? ' armed' : ''}" data-pid="${q.id}">
+      <div class="prm-h"><button class="pname" data-more="${q.id}">${esc(q.name)}${physOutputs().has(q.id) ? ' <small style="color:var(--accent2);font-weight:400">揺れで自動</small>' : ''}</button>
+        <span class="pval" id="pv${q.id}">${fmtV(q.value)}</span>
+        <button class="sm${armed ? ' on' : ''}" data-arm="${q.id}">${armed ? '編集中' : '編集'}</button></div>
+      <div class="prm-s"><input type="range" min="${q.min}" max="${q.max}" step="${step}" value="${q.value}" data-slide="${q.id}">
+        <div class="ticks" id="tk${q.id}">${ticksHTML(q)}</div></div>
+      ${armed ? `<div class="prm-k" id="pk${q.id}">${keysHTML(q)}</div>` : ''}
+    </div>`;
+  }).join('');
+}
+function ticksHTML(q) {
+  return paramKeys(q).map(k => `<i class="${k === q.def ? 'def' : ''}${Math.abs(k - q.value) < 1e-6 ? ' cur' : ''}" style="left:${(k - q.min) / (q.max - q.min) * 100}%"></i>`).join('');
+}
+function keysHTML(q) {
+  const ks = paramKeys(q), t = editTarget();
+  let h = 'キー：' + ks.map(k => `<button data-jump="${q.id}" data-k="${k}" class="${Math.abs(k - q.value) < 1e-6 ? 'on' : ''}">${fmtV(k)}${k === q.def ? '（基本）' : ''}</button>`).join('');
+  if (t && ks.some(k => keyStr(k) === t.key)) h += `<button data-delkey="${q.id}" class="danger">このキーを削除</button>`;
+  else if (t) h += `<span>← ${fmtV(q.value)} で形を変えると新しいキーになります</span>`;
+  return h;
+}
+function refreshParamUI(q) {
+  const pv = $('#pv' + q.id); if (pv) pv.textContent = fmtV(q.value);
+  const tk = $('#tk' + q.id); if (tk) tk.innerHTML = ticksHTML(q);
+  const pk = $('#pk' + q.id); if (pk) pk.innerHTML = keysHTML(q);
+  const sl = document.querySelector(`[data-slide="${q.id}"]`); if (sl && document.activeElement !== sl) sl.value = q.value;
+}
+$('#paramList').addEventListener('input', e => {
+  const id = +e.target.dataset.slide; if (!id) return;
+  stopPlay();
+  const q = App.params.find(q => q.id === id); let v = +e.target.value;
+  const thr = (q.max - q.min) * 0.03;                     // キーの近くは吸い付く
+  for (const k of paramKeys(q)) if (Math.abs(k - v) < thr) { v = k; break; }
+  q.value = v; refreshParamUI(q); evaluateAll(); updateProps(true); setMode(App.mode);
+});
+$('#paramList').addEventListener('change', e => { if (e.target.dataset.slide) { const q = App.params.find(q => q.id === +e.target.dataset.slide); e.target.value = q.value; scheduleSave(); } });
+$('#paramList').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  if (b.dataset.arm) {
+    stopPlay();
+    const id = +b.dataset.arm; App.editParam = App.editParam === id ? null : id;
+    renderParams(); renderList(); updateProps(); setMode(App.mode);
+    if (App.editParam) toast('スライダーを動かして、変形・移動で形を作ってください');
+  } else if (b.dataset.jump) {
+    const q = App.params.find(q => q.id === +b.dataset.jump); q.value = +b.dataset.k;
+    refreshParamUI(q); evaluateAll(); updateProps(); setMode(App.mode); scheduleSave();
+  } else if (b.dataset.delkey) {
+    const q = App.params.find(q => q.id === +b.dataset.delkey), key = keyStr(q.value), sel = App.sel;
+    const items = [];
+    if (sel && sel.binds[q.id] && sel.binds[q.id][key]) items.push({ label: `「${sel.name}」のキーだけ削除`, fn: () => delKey(q, key, [sel]) });
+    items.push({ label: '全パーツのこのキーを削除', danger: true, fn: () => delKey(q, key, App.parts) });
+    showActions(`「${q.name}」のキー ${fmtV(q.value)}`, items);
+  } else if (b.dataset.more) {
+    const q = App.params.find(q => q.id === +b.dataset.more);
+    showActions(q.name, [
+      { label: '名前を変更', fn: () => { const n = prompt('新しい名前', q.name); if (n) { replaceParam(q, { name: n }); } } },
+      { label: '範囲を変更', sub: `いま：最小 ${q.min} / 最大 ${q.max} / 初期値 ${q.def}`, fn: () => { const r = parseRange(prompt('最小,最大,初期値', `${q.min},${q.max},${q.def}`)); if (r) replaceParam(q, r); } },
+      { label: 'このパラメータを削除', danger: true, fn: () => {
+        if (!confirm(`「${q.name}」と、それに登録した形をすべて削除しますか？`)) return;
+        for (const p of App.parts) if (p.binds[q.id]) { const nb = { ...p.binds }; delete nb[q.id]; p.binds = nb; }
+        App.params = App.params.filter(x => x !== q); if (App.editParam === q.id) App.editParam = null;
+        commit(); evaluateAll(); renderParams(); renderList(); updateProps(); setMode(App.mode);
+      } },
+    ]);
+  }
+});
+function replaceParam(q, patch) {
+  const nq = { ...q, ...patch }; nq.value = clamp(nq.value, nq.min, nq.max);
+  App.params = App.params.map(x => x === q ? nq : x);
+  commit(); evaluateAll(); renderParams(); updateProps(); setMode(App.mode);
+}
+function delKey(q, key, parts) {
+  for (const p of parts) {
+    const b = p.binds[q.id]; if (!b || !b[key]) continue;
+    const nb = { ...p.binds }, m = { ...b }; delete m[key];
+    if (Object.keys(m).length) nb[q.id] = m; else delete nb[q.id];
+    p.binds = nb;
+  }
+  commit(); evaluateAll(); renderParams(); renderList(); updateProps(); setMode(App.mode);
+  toast('キーを削除しました（元に戻せます）');
+}
+$('#resetParams').onclick = () => {
+  stopPlay(); for (const q of App.params) q.value = q.def;
+  evaluateAll(); renderParams(); updateProps(); setMode(App.mode); scheduleSave();
+};
+/* 自動プレビュー：全パラメータをゆらゆら動かす */
+let playRaf = 0, playSaved = null;
+function stopPlay() {
+  if (!playRaf) return;
+  cancelAnimationFrame(playRaf); playRaf = 0;
+  for (const q of App.params) if (playSaved && playSaved.has(q.id)) q.value = playSaved.get(q.id);
+  $('#playParams').textContent = '▶ 動かす';
+  evaluateAll(); renderParams(); updateProps(); scheduleSave();
+}
+$('#playParams').onclick = () => {
+  if (playRaf) return stopPlay();
+  if (!App.params.length) return toast('先にパラメータを追加してください');
+  App.editParam = null; renderParams(); renderList(); setMode(App.mode);
+  playSaved = new Map(App.params.map(q => [q.id, q.value]));
+  $('#playParams').textContent = '■ 止める';
+  const t0 = performance.now();
+  const loop = now => {
+    const t = (now - t0) / 1000;
+    App.params.forEach((q, i) => {
+      const mid = (q.min + q.max) / 2, amp = (q.max - q.min) / 2, period = 2.2 + i * 0.45;
+      q.value = mid + amp * Math.sin(t * Math.PI * 2 / period + i * 1.3);
+      const pv = $('#pv' + q.id); if (pv) pv.textContent = fmtV(q.value);
+      const sl = document.querySelector(`[data-slide="${q.id}"]`); if (sl) sl.value = q.value;
+    });
+    evaluateAll();
+    playRaf = requestAnimationFrame(loop);
+  };
+  playRaf = requestAnimationFrame(loop);
+};
+
+/* =========================================================
+   毎フレームの処理（モーション再生・物理演算）
+   必要なときだけ動き、落ち着いたら止まる
+   ========================================================= */
+let frameRaf = 0, frameLast = 0, inFrame = false;
+function wake() { if (!frameRaf && !inFrame) { frameLast = performance.now(); frameRaf = requestAnimationFrame(frame); } }
+function frame(now) {
+  frameRaf = 0;
+  const dt = Math.min(0.05, Math.max(0.001, (now - frameLast) / 1000)); frameLast = now;
+  let active = false;
+  inFrame = true;
+  try {
+    if (MO.playing) { motionStep(dt); active = true; }
+    if (stepPhysics(dt)) active = true;
+    evaluateAll(); liveParamUI();
+  } finally { inFrame = false; }
+  if (active) frameRaf = requestAnimationFrame(frame);
+}
+/* スライダーなど表示中の数値だけ更新（DOMを作り直さない） */
+function liveParamUI() {
+  for (const q of App.params) {
+    const pv = $('#pv' + q.id); if (pv) pv.textContent = fmtV(q.value);
+    const sl = document.querySelector(`[data-slide="${q.id}"]`); if (sl && document.activeElement !== sl) sl.value = q.value;
+    const mv = $('#mv' + q.id); if (mv) mv.textContent = fmtV(q.value);
+    const ms = document.querySelector(`[data-mslide="${q.id}"]`); if (ms && !MO.touched.has(q.id)) ms.value = q.value;
+  }
+  if (!$('#motionPane').classList.contains('hidden')) motionTimeUI();
+}
+
+/* =========================================================
+   物理演算（揺れ）
+   「動きの元」パラメータの変化を振り子の支点の動きとみなし、
+   振り子の角度を「揺らすパラメータ」に書き込む
+   ========================================================= */
+App.physics = [];           // {id, name, inp, out, len, damp, str, inv}
+App.physOn = true;
+App.nextPhysId = 1;
+const PH = new Map();       // 振り子の状態（保存しない）
+const normParam = q => q.value >= q.def ? (q.max > q.def ? (q.value - q.def) / (q.max - q.def) : 0) : (q.def > q.min ? (q.value - q.def) / (q.def - q.min) : 0);
+function physOutputs() { return new Set(App.physOn ? App.physics.map(g => g.out) : []); }
+function stepPhysics(dt) {
+  if (!App.physOn || !App.physics.length) return false;
+  let moving = false;
+  for (const g of App.physics) {
+    const qi = App.params.find(q => q.id === g.inp), qo = App.params.find(q => q.id === g.out);
+    if (!qi || !qo || qi === qo || qo.id === App.editParam || MO.touched.has(qo.id)) continue;
+    const u = normParam(qi) * (g.inv ? -1 : 1);
+    let st = PH.get(g.id);
+    if (!st) { st = { th: 0, om: 0, X: u, V: 0 }; PH.set(g.id, st); }
+    const V = (u - st.X) / dt, A = clamp((V - st.V) / dt, -400, 400);
+    const L = g.len, n = 4, h = dt / n;
+    for (let i = 0; i < n; i++) {
+      const al = -(9.8 / L) * Math.sin(st.th) - g.damp * st.om - (A * 0.2 / L) * Math.cos(st.th);
+      st.om += al * h; st.th = clamp(st.th + st.om * h, -1.4, 1.4);
+    }
+    st.X = u; st.V = V;
+    const o = clamp(st.th / 0.6 * g.str, -1, 1);
+    qo.value = clamp(qo.def + o * (o > 0 ? qo.max - qo.def : qo.def - qo.min), qo.min, qo.max);
+    if (Math.abs(st.om) > 0.002 || Math.abs(st.th) > 0.002 || Math.abs(V) > 1e-4) moving = true;
+  }
+  return moving;
+}
+function renderPhys() {
+  const el = $('#physList'); $('#physOn').textContent = App.physOn ? 'ON' : 'OFF'; $('#physOn').classList.toggle('on', App.physOn);
+  if (!App.physics.length) { el.innerHTML = '<div class="prm-empty">頭を動かしたときに髪などが遅れて揺れるようにできます。「＋ 揺れを追加」から作ってください。</div>'; return; }
+  const opts = sel => App.params.map(q => `<option value="${q.id}"${q.id === sel ? ' selected' : ''}>${esc(q.name)}</option>`).join('');
+  el.innerHTML = App.physics.map(g => `<div class="prm" data-gid="${g.id}">
+    <div class="prm-h"><b style="flex:1">${esc(g.name)}</b><button class="sm danger" data-pdel="${g.id}">削除</button></div>
+    <label class="f">動きの元（このパラメータが動くと揺れる）<select data-pk="inp">${opts(g.inp)}</select></label>
+    <label class="f">揺らすパラメータ<select data-pk="out">${opts(g.out)}</select></label>
+    <label class="f">揺れの長さ<span class="v">${g.len.toFixed(2)}</span><input type="range" data-pk="len" min="0.1" max="2" step="0.05" value="${g.len}"></label>
+    <label class="f">止まりやすさ<span class="v">${g.damp.toFixed(1)}</span><input type="range" data-pk="damp" min="0.3" max="8" step="0.1" value="${g.damp}"></label>
+    <label class="f">強さ<span class="v">${g.str.toFixed(2)}</span><input type="range" data-pk="str" min="0.1" max="3" step="0.05" value="${g.str}"></label>
+    <label class="chk"><input type="checkbox" data-pk="inv"${g.inv ? ' checked' : ''}>揺れる向きを反転</label>
+  </div>`).join('');
+}
+function patchPhys(id, patch, doCommit) {
+  App.physics = App.physics.map(g => g.id === id ? { ...g, ...patch } : g);
+  if (doCommit) commit();
+  wake();
+}
+$('#physList').addEventListener('input', e => {
+  const k = e.target.dataset.pk, card = e.target.closest('[data-gid]'); if (!k || !card || e.target.tagName !== 'INPUT' || e.target.type !== 'range') return;
+  e.target.parentElement.querySelector('.v').textContent = (+e.target.value).toFixed(k === 'damp' ? 1 : 2);
+  patchPhys(+card.dataset.gid, { [k]: +e.target.value }, false);
+});
+$('#physList').addEventListener('change', e => {
+  const k = e.target.dataset.pk, card = e.target.closest('[data-gid]'); if (!k || !card) return;
+  const v = e.target.type === 'checkbox' ? e.target.checked : +e.target.value;
+  PH.delete(+card.dataset.gid);
+  patchPhys(+card.dataset.gid, { [k]: v }, true);
+  if (k === 'out' || k === 'inp') renderParams();
+});
+$('#physList').addEventListener('click', e => {
+  const id = +(e.target.dataset && e.target.dataset.pdel); if (!id) return;
+  App.physics = App.physics.filter(g => g.id !== id); PH.delete(id);
+  commit(); renderPhys(); renderParams();
+});
+$('#physOn').onclick = () => { App.physOn = !App.physOn; PH.clear(); renderPhys(); renderParams(); scheduleSave(); wake(); };
+$('#addPhys').onclick = () => {
+  if (!App.doc) return toast('まだ何も開いていません');
+  if (!App.params.length) return toast('先に「顔の向き」などのパラメータを作ってください');
+  const used = new Set(App.physics.map(g => g.out));
+  const inp = (App.params.find(q => /向き/.test(q.name)) || App.params[0]).id;
+  let out = App.params.find(q => /揺/.test(q.name) && q.id !== inp && !used.has(q.id));
+  const make = outId => {
+    const g = { id: App.nextPhysId++, name: '揺れ' + (App.physics.length + 1), inp, out: outId, len: 0.6, damp: 2.5, str: 1, inv: false };
+    App.physics = [...App.physics, g]; App.physOn = true;
+    commit(); renderPhys(); renderParams(); wake();
+  };
+  if (out) return make(out.id);
+  showActions('揺らすパラメータ', [
+    { label: '「髪揺れ」パラメータを新しく作る', sub: '-1〜1。あとで髪の形を ±1 に登録します', fn: () => { addParam({ name: '髪揺れ', min: -1, max: 1, def: 0 }); make(App.params[App.params.length - 1].id); } },
+    ...App.params.filter(q => q.id !== inp).map(q => ({ label: q.name, fn: () => make(q.id) })),
+  ]);
+};
+
+/* =========================================================
+   モーション（タイムライン）
+   tracks[パラメータID] = [[秒, 値], ...]（時間順）
+   ========================================================= */
+App.motions = [];           // {id, name, dur, loop, tracks}
+App.curMotion = null;
+App.nextMotionId = 1;
+const MO = { t: 0, playing: false, rec: false, touched: new Map() };
+const curMo = () => App.motions.find(m => m.id === App.curMotion) || null;
+function sampleTrack(tr, t) {
+  if (!tr || !tr.length) return null;
+  if (t <= tr[0][0]) return tr[0][1];
+  const L = tr.length; if (t >= tr[L - 1][0]) return tr[L - 1][1];
+  let lo = 0, hi = L - 1;
+  while (hi - lo > 1) { const m = (lo + hi) >> 1; if (tr[m][0] <= t) lo = m; else hi = m; }
+  const [t0, v0] = tr[lo], [t1, v1] = tr[hi], dt = t1 - t0;
+  const a = tr[lo - 1] || tr[lo], b = tr[hi + 1] || tr[hi];
+  // 前後のキーも見てなめらかにつなぐ（行き過ぎないよう2つのキーの間に収める）
+  const m0 = a === tr[lo] ? v1 - v0 : (v1 - a[1]) / (t1 - a[0]) * dt;
+  const m1 = b === tr[hi] ? v1 - v0 : (b[1] - v0) / (b[0] - t0) * dt;
+  const u = (t - t0) / dt, u2 = u * u, u3 = u2 * u;
+  const v = (2 * u3 - 3 * u2 + 1) * v0 + (u3 - 2 * u2 + u) * m0 + (-2 * u3 + 3 * u2) * v1 + (u3 - u2) * m1;
+  return clamp(v, Math.min(v0, v1), Math.max(v0, v1));
+}
+function applyMotion(t) {
+  const m = curMo(); if (!m) return;
+  for (const q of App.params) {
+    if (MO.touched.has(q.id)) continue;
+    const v = sampleTrack(m.tracks[q.id], t);
+    if (v != null) q.value = clamp(v, q.min, q.max);
+  }
+}
+function motionStep(dt) {
+  const m = curMo(); if (!m) { MO.playing = false; return; }
+  MO.t += dt;
+  if (MO.t >= m.dur) {
+    if (MO.rec || !m.loop) { MO.t = m.dur; applyMotion(MO.t); recordSamples(); stopMotion(); return; }
+    MO.t %= m.dur;
+  }
+  applyMotion(MO.t);
+  recordSamples();
+}
+function recordSamples() {
+  if (!MO.rec) return;
+  for (const [pid, r] of MO.touched) {
+    const q = App.params.find(q => q.id === pid); if (!q) continue;
+    const last = r.samples[r.samples.length - 1];
+    if (!last || MO.t - last[0] >= 1 / 20) r.samples.push([MO.t, q.value]);
+  }
+}
+/* 記録した細かい点を、形が変わらない範囲で間引く */
+function simplify(pts, tol) {
+  if (pts.length < 3) return pts.slice();
+  const keep = new Uint8Array(pts.length); keep[0] = keep[pts.length - 1] = 1;
+  const st = [[0, pts.length - 1]];
+  while (st.length) {
+    const [a, b] = st.pop(); let mi = -1, md = tol;
+    for (let i = a + 1; i < b; i++) {
+      const u = (pts[i][0] - pts[a][0]) / (pts[b][0] - pts[a][0] || 1);
+      const d = Math.abs(pts[i][1] - (pts[a][1] + (pts[b][1] - pts[a][1]) * u));
+      if (d > md) { md = d; mi = i; }
+    }
+    if (mi > 0) { keep[mi] = 1; st.push([a, mi], [mi, b]); }
+  }
+  return pts.filter((_, i) => keep[i]);
+}
+function setTrack(m, pid, track) {
+  const tracks = { ...m.tracks };
+  if (track && track.length) tracks[pid] = track; else delete tracks[pid];
+  const nm = { ...m, tracks };
+  App.motions = App.motions.map(x => x === m ? nm : x);
+  return nm;
+}
+function finishTouch(pid) {
+  const r = MO.touched.get(pid); MO.touched.delete(pid);
+  const row = document.querySelector(`.mrow[data-mid="${pid}"]`); if (row) row.classList.remove('touch');
+  const m = curMo(), q = App.params.find(q => q.id === pid);
+  if (!r || !m || !q || r.samples.length < 1) return;
+  const pts = simplify(r.samples, (q.max - q.min) * 0.004).map(([t, v]) => [Math.round(t * 1000) / 1000, Math.round(v * 1000) / 1000]);
+  const t0 = pts[0][0] - 1e-3, t1 = pts[pts.length - 1][0] + 1e-3;
+  const keep = (m.tracks[pid] || []).filter(k => k[0] < t0 || k[0] > t1);
+  setTrack(m, pid, [...keep, ...pts].sort((a, b) => a[0] - b[0]));
+  commit(); drawLanes();
+}
+function stopMotion() {
+  const wasRec = MO.rec;
+  MO.playing = false; MO.rec = false;
+  for (const pid of [...MO.touched.keys()]) wasRec ? finishTouch(pid) : MO.touched.delete(pid);
+  motionButtons(); motionTimeUI();
+  if (wasRec) toast('記録しました');
+}
+function motionButtons() {
+  $('#moPlay').textContent = MO.playing && !MO.rec ? '■ 停止' : '▶ 再生';
+  $('#moRec').textContent = MO.rec ? '■ 記録中' : '● 記録';
+  $('#moRec').classList.toggle('on', MO.rec);
+}
+function motionTimeUI() {
+  const m = curMo(); if (!m) return;
+  $('#moT').textContent = MO.t.toFixed(2);
+  const sc = $('#moScrub'); if (document.activeElement !== sc) sc.value = MO.t;
+  drawLanes();
+}
+function renderMotion() {
+  const sel = $('#moSel');
+  sel.innerHTML = App.motions.length ? App.motions.map(m => `<option value="${m.id}"${m.id === App.curMotion ? ' selected' : ''}>${esc(m.name)}</option>`).join('') : '<option>（モーションなし）</option>';
+  const m = curMo();
+  $('#moBody').classList.toggle('hidden', !m); $('#moEmpty').classList.toggle('hidden', !!m);
+  $('#moMore').disabled = !m;
+  if (!m) {
+    $('#moEmpty').innerHTML = App.params.length ? '「✨ おまかせ」で待機・うなずき・話すなどの動きを自動で作れます。<br>自分で作るときは「＋ 新規」→「● 記録」を押してから、下のスライダーを指で動かしてください。'
+      : 'モーションはパラメータの動きを時間に沿って記録したものです。先に「パラメータ」タブでパラメータを作ってください。';
+    return;
+  }
+  $('#moScrub').max = m.dur; $('#moDur').textContent = m.dur.toFixed(1) + '秒' + (m.loop ? ' ↻' : '');
+  const outs = physOutputs();
+  $('#moRows').innerHTML = App.params.length ? App.params.map(q => `<div class="mrow" data-mid="${q.id}">
+      <div class="mrow-h"><b>${esc(q.name)}${outs.has(q.id) ? '<em>揺れで自動</em>' : ''}</b><span id="mv${q.id}">${fmtV(q.value)}</span></div>
+      <input type="range" data-mslide="${q.id}" min="${q.min}" max="${q.max}" step="${(q.max - q.min) / 200}" value="${q.value}">
+      <canvas class="lane" data-lane="${q.id}"></canvas></div>`).join('')
+    : '<div class="prm-empty">パラメータがありません</div>';
+  motionButtons(); motionTimeUI();
+}
+function drawLanes() {
+  const m = curMo(); if (!m) return;
+  const dpr = Math.min(window.devicePixelRatio || 1, 3);
+  for (const cv of document.querySelectorAll('canvas[data-lane]')) {
+    const w = cv.clientWidth, h = cv.clientHeight; if (!w) continue;
+    if (cv.width !== Math.round(w * dpr)) { cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); }
+    const c = cv.getContext('2d'); c.setTransform(dpr, 0, 0, dpr, 0, 0); c.clearRect(0, 0, w, h);
+    c.fillStyle = '#16161e'; c.fillRect(0, 3, w, h - 6);
+    const q = App.params.find(q => q.id === +cv.dataset.lane), tr = m.tracks[+cv.dataset.lane];
+    if (tr && q) {
+      c.strokeStyle = 'rgba(255,122,168,.55)'; c.lineWidth = 1; c.beginPath();
+      for (let i = 0; i <= 60; i++) {
+        const t = m.dur * i / 60, v = sampleTrack(tr, t), y = h - 3 - (v - q.min) / (q.max - q.min) * (h - 6);
+        i ? c.lineTo(w * i / 60, y) : c.moveTo(0, y);
+      }
+      c.stroke();
+      c.fillStyle = '#ff7aa8';
+      for (const [t] of tr) c.fillRect(t / m.dur * w - 1, 5, 2, h - 10);
+    }
+    c.fillStyle = MO.rec ? '#ff5a5a' : '#fff'; c.fillRect(MO.t / m.dur * w - 1, 0, 2, h);
+  }
+}
+$('#moSel').onchange = e => { stopMotion(); App.curMotion = +e.target.value || null; MO.t = 0; applyMotion(0); evaluateAll(); renderMotion(); scheduleSave(); };
+$('#moNew').onclick = () => {
+  if (!App.doc) return toast('まだ何も開いていません');
+  stopMotion();
+  const m = { id: App.nextMotionId++, name: 'モーション' + (App.motions.length + 1), dur: 3, loop: true, tracks: {} };
+  App.motions = [...App.motions, m]; App.curMotion = m.id; MO.t = 0;
+  commit(); renderMotion();
+};
+$('#moMore').onclick = () => {
+  const m = curMo(); if (!m) return;
+  showActions(m.name, [
+    { label: '名前を変更', fn: () => { const n = prompt('モーションの名前', m.name); if (n) { App.motions = App.motions.map(x => x === m ? { ...m, name: n } : x); commit(); renderMotion(); } } },
+    { label: '長さを変更', sub: `いま ${m.dur}秒`, fn: () => { const d = +prompt('長さ（秒）', m.dur); if (d > 0 && d <= 120) { App.motions = App.motions.map(x => x === m ? { ...m, dur: d } : x); MO.t = Math.min(MO.t, d); commit(); renderMotion(); } else if (d) toast('0〜120秒で入力してください'); } },
+    { label: m.loop ? 'ループ再生をやめる' : 'ループ再生する', fn: () => { App.motions = App.motions.map(x => x === m ? { ...m, loop: !m.loop } : x); commit(); renderMotion(); } },
+    { label: 'キーをすべて消す', danger: true, fn: () => { if (confirm('このモーションの記録をすべて消しますか？')) { App.motions = App.motions.map(x => x === m ? { ...m, tracks: {} } : x); commit(); renderMotion(); } } },
+    { label: 'このモーションを削除', danger: true, fn: () => { if (!confirm(`「${m.name}」を削除しますか？`)) return; stopMotion(); App.motions = App.motions.filter(x => x !== m); App.curMotion = App.motions.length ? App.motions[0].id : null; commit(); renderMotion(); } },
+  ]);
+};
+$('#moPlay').onclick = () => {
+  const m = curMo(); if (!m) return;
+  if (MO.playing) return stopMotion();
+  App.editParam = null; stopPlay(); renderParams(); setMode(App.mode);
+  if (MO.t >= m.dur - 1e-3) MO.t = 0;
+  MO.playing = true; motionButtons(); wake();
+};
+$('#moRec').onclick = () => {
+  const m = curMo(); if (!m) return;
+  if (MO.rec) return stopMotion();
+  App.editParam = null; stopPlay(); renderParams(); setMode(App.mode);
+  if (MO.t >= m.dur - 1e-3) MO.t = 0;
+  MO.rec = true; MO.playing = true; motionButtons(); wake();
+  toast('記録中：スライダーを指で動かしてください');
+};
+$('#moKey').onclick = () => {
+  let m = curMo(); if (!m) return;
+  const outs = physOutputs(), t = Math.round(MO.t * 1000) / 1000;
+  for (const q of App.params) {
+    if (outs.has(q.id)) continue;
+    const tr = (m.tracks[q.id] || []).filter(k => Math.abs(k[0] - t) > 0.02);
+    m = setTrack(m, q.id, [...tr, [t, Math.round(q.value * 1000) / 1000]].sort((a, b) => a[0] - b[0]));
+  }
+  commit(); drawLanes(); toast(`${t.toFixed(2)}秒に今の値を記録しました`);
+};
+$('#moDelKey').onclick = () => {
+  let m = curMo(); if (!m) return; let n = 0;
+  for (const pid in m.tracks) {
+    const tr = m.tracks[pid].filter(k => Math.abs(k[0] - MO.t) > 0.06);
+    n += m.tracks[pid].length - tr.length; m = setTrack(m, pid, tr);
+  }
+  if (!n) return toast('この時間にはキーがありません');
+  commit(); drawLanes(); toast(`${n}個のキーを削除しました`);
+};
+$('#moScrub').addEventListener('input', e => { if (MO.playing) stopMotion(); MO.t = +e.target.value; applyMotion(MO.t); evaluateAll(); liveParamUI(); });
+$('#moScrub').addEventListener('change', () => scheduleSave());
+const moRows = $('#moRows');
+moRows.addEventListener('pointerdown', e => {
+  const id = +(e.target.dataset && e.target.dataset.mslide); if (!id) return;
+  MO.touched.set(id, { samples: [] });
+  e.target.closest('.mrow').classList.add('touch');
+  if (MO.rec) { const q = App.params.find(q => q.id === id); MO.touched.get(id).samples.push([MO.t, q.value]); }
+});
+moRows.addEventListener('input', e => {
+  const id = +(e.target.dataset && e.target.dataset.mslide); if (!id) return;
+  const q = App.params.find(q => q.id === id); q.value = +e.target.value;
+  if (!MO.touched.has(id)) MO.touched.set(id, { samples: [] });
+  evaluateAll(); liveParamUI();
+});
+const endMTouch = e => {
+  const id = +(e.target.dataset && e.target.dataset.mslide); if (!id || !MO.touched.has(id)) return;
+  if (MO.rec) finishTouch(id); else { MO.touched.delete(id); e.target.closest('.mrow').classList.remove('touch'); }
+};
+moRows.addEventListener('pointerup', endMTouch);
+moRows.addEventListener('pointercancel', endMTouch);
+moRows.addEventListener('change', endMTouch);
+
+/* =========================================================
+   モーションのおまかせ生成
+   パラメータ名から「目」「口」「顔の向き」などの役割を推測し、
+   テンプレートに少しランダムさを加えてキーを組み立てる
+   値は役割ごとの共通の物差しで作る
+     open … 0＝閉じる / 1＝開く（パラメータの最小〜最大に対応）
+     bi   … -1〜1（初期値を0として、最小側・最大側に対応）
+   ========================================================= */
+const ROLES = [
+  { key: 'eyeL', label: '左目の開閉', kind: 'open', re: /左.*目|目.*左|eye.?l/i },
+  { key: 'eyeR', label: '右目の開閉', kind: 'open', re: /右.*目|目.*右|eye.?r/i },
+  { key: 'eyes', label: '両目の開閉', kind: 'open', re: /目|まばた|瞬|eye/i },
+  { key: 'mouth', label: '口の開閉', kind: 'open', re: /口|mouth/i },
+  { key: 'angX', label: '顔の向き 左右', kind: 'bi', re: /(顔|頭|首|角度).*(左右|横|x)|angle.?x|左右/i, not: /体|胴|body/i },
+  { key: 'angY', label: '顔の向き 上下', kind: 'bi', re: /(顔|頭|首|角度).*(上下|縦|y)|angle.?y|上下/i, not: /体|胴|body/i },
+  { key: 'body', label: '体の向き', kind: 'bi', re: /体|胴|body/i },
+];
+App.roleMap = {};          // 役割 → パラメータID（ユーザーが選び直したもの）
+function detectRoles() {
+  const outs = physOutputs(), used = new Set(), map = {};
+  for (const r of ROLES) {
+    const saved = App.roleMap[r.key];
+    if (saved !== undefined && (saved === 0 || App.params.some(q => q.id === saved))) { map[r.key] = saved; if (saved) used.add(saved); continue; }
+    const q = App.params.find(q => !used.has(q.id) && !outs.has(q.id) && r.re.test(q.name) && !(r.not && r.not.test(q.name)));
+    map[r.key] = q ? q.id : 0; if (q) used.add(q.id);
+  }
+  return map;
+}
+const EYE_ROLES = ['eyeL', 'eyeR', 'eyes'];
+function blinkKeys(dur, rnd, count) {
+  const ks = [[0, 1]], times = [];
+  for (let i = 0; i < 40 && times.length < count; i++) {
+    const t = 0.5 + rnd() * (dur - 1.1);
+    if (times.every(x => Math.abs(x - t) > 1.1)) times.push(t);
+  }
+  times.sort((a, b) => a - b);
+  for (const t of times) {
+    const dbl = rnd() < 0.2;                                   // ときどき2回まばたき
+    ks.push([t, 1], [t + 0.07, 0], [t + 0.12, 0], [t + 0.24, 1]);
+    if (dbl && t + 0.6 < dur - 0.2) ks.push([t + 0.36, 1], [t + 0.43, 0], [t + 0.48, 0], [t + 0.6, 1]);
+  }
+  ks.push([dur, 1]);
+  return ks;
+}
+/* 周期関数をなめらかなキー列にする（ループのつなぎ目もそろう） */
+function waveKeys(dur, step, f) {
+  const ks = [], n = Math.max(2, Math.round(dur / step));
+  for (let i = 0; i <= n; i++) { const t = dur * i / n; ks.push([t, f(t)]); }
+  return ks;
+}
+const TEMPLATES = [
+  {
+    id: 'idle', name: '待機（ゆらゆら＋まばたき）', dur: 6, roles: ['angX', 'angY', 'body', ...EYE_ROLES],
+    gen: (d, a, r) => {
+      const ph = r() * 6.28, ph2 = r() * 6.28;
+      return {
+        angX: waveKeys(d, 0.5, t => 0.16 * a * Math.sin(2 * Math.PI * t / d + ph) + 0.05 * a * Math.sin(4 * Math.PI * t / d + ph2)),
+        angY: waveKeys(d, 0.5, t => 0.1 * a * Math.sin(4 * Math.PI * t / d + ph2)),
+        body: waveKeys(d, 0.5, t => 0.25 * a * Math.sin(2 * Math.PI * t / d + ph + 0.6)),
+        eyes: blinkKeys(d, r, Math.max(1, Math.round(d / 2.6))),
+      };
+    }
+  },
+  {
+    id: 'nod', name: 'うなずき', dur: 2.4, roles: ['angY', 'body', ...EYE_ROLES],
+    gen: (d, a, r) => {
+      const k = d / 2.4, s = 0.55 + r() * 0.15;
+      return {
+        angY: [[0, 0], [0.32 * k, -s * a], [0.62 * k, 0.06 * a], [0.95 * k, -s * 0.8 * a], [1.3 * k, 0], [d, 0]],
+        body: [[0, 0], [0.4 * k, -0.15 * a], [1.3 * k, 0], [d, 0]],
+        eyes: [[0, 1], [0.25 * k, 1], [0.35 * k, 0.55], [1.1 * k, 0.6], [1.35 * k, 1], [d, 1]],
+      };
+    }
+  },
+  {
+    id: 'shake', name: '首ふり（いいえ）', dur: 2.4, roles: ['angX', 'angY', ...EYE_ROLES],
+    gen: (d, a, r) => {
+      const k = d / 2.4, s = 0.55 + r() * 0.15;
+      return {
+        angX: [[0, 0], [0.28 * k, s * a], [0.58 * k, -s * a], [0.88 * k, s * 0.75 * a], [1.18 * k, -s * 0.45 * a], [1.5 * k, 0], [d, 0]],
+        angY: [[0, 0], [0.3 * k, -0.15 * a], [1.5 * k, -0.1 * a], [d, 0]],
+        eyes: [[0, 1], [0.2 * k, 0.7], [1.5 * k, 0.7], [1.75 * k, 1], [d, 1]],
+      };
+    }
+  },
+  {
+    id: 'look', name: 'きょろきょろ', dur: 5, roles: ['angX', 'angY', 'body', ...EYE_ROLES],
+    gen: (d, a, r) => {
+      const k = d / 5, sx = (0.6 + r() * 0.2) * (r() < 0.5 ? 1 : -1), sy = (r() - 0.5) * 0.3;
+      return {
+        angX: [[0, 0], [0.45 * k, sx * a], [1.6 * k, sx * a], [2.15 * k, -sx * a], [3.3 * k, -sx * a], [3.9 * k, 0], [d, 0]],
+        angY: [[0, 0], [0.45 * k, sy * a], [1.6 * k, sy * a], [2.15 * k, -sy * a], [3.3 * k, -sy * a], [3.9 * k, 0], [d, 0]],
+        body: [[0, 0], [0.7 * k, sx * 0.25 * a], [1.8 * k, sx * 0.25 * a], [2.5 * k, -sx * 0.25 * a], [3.5 * k, -sx * 0.25 * a], [4.2 * k, 0], [d, 0]],
+        eyes: [[0, 1], [1.8 * k, 1], [1.87 * k, 0], [1.93 * k, 0], [2.05 * k, 1], [4.1 * k, 1], [4.17 * k, 0], [4.23 * k, 0], [4.35 * k, 1], [d, 1]],
+      };
+    }
+  },
+  {
+    id: 'happy', name: '喜ぶ', dur: 3, roles: ['angX', 'angY', 'body', 'mouth', ...EYE_ROLES],
+    gen: (d, a, r) => {
+      const k = d / 3, tilt = (r() < 0.5 ? 1 : -1) * 0.3;
+      const bounce = []; for (let i = 0; i <= 8; i++) bounce.push([i * 0.3 * k, i === 0 || i === 8 ? 0 : (i % 2 ? 0.35 : 0.05) * a]);
+      bounce.push([d, 0]);
+      return {
+        angY: bounce,
+        angX: [[0, 0], [0.4 * k, tilt * a], [2.4 * k, tilt * a], [d, 0]],
+        body: waveKeys(d, 0.3 * k, t => 0.35 * a * Math.sin(2 * Math.PI * t / (d / 2))),
+        eyes: [[0, 1], [0.2 * k, 0.25], [2.5 * k, 0.25], [2.8 * k, 1], [d, 1]],
+        mouth: [[0, 0], [0.2 * k, 0.7], [2.5 * k, 0.7], [2.8 * k, 0], [d, 0]],
+      };
+    }
+  },
+  {
+    id: 'talk', name: '話す（口パク）', dur: 5, roles: ['mouth', 'angX', 'angY', ...EYE_ROLES],
+    gen: (d, a, r) => {
+      const m = [[0, 0]]; let t = 0.25;
+      while (t < d - 0.45) {
+        if (r() < 0.12) { m.push([t, 0]); t += 0.3 + r() * 0.3; continue; }   // 息つぎ
+        const o = Math.min(1, (0.35 + r() * 0.65) * Math.min(1.2, a));
+        m.push([t, 0.08], [t + 0.08, o], [t + 0.16, 0.12]);
+        t += 0.17 + r() * 0.09;
+      }
+      m.push([t + 0.05, 0], [d, 0]);
+      const ph = r() * 6.28;
+      return {
+        mouth: m,
+        angX: waveKeys(d, 0.5, t => 0.14 * a * Math.sin(2 * Math.PI * t / d + ph)),
+        angY: waveKeys(d, 0.4, t => 0.12 * a * Math.sin(6 * Math.PI * t / d + ph)),
+        eyes: blinkKeys(d, r, Math.max(1, Math.round(d / 2.5))),
+      };
+    }
+  },
+  {
+    id: 'surprise', name: '驚く', dur: 2.5, roles: ['angY', 'body', 'mouth', ...EYE_ROLES],
+    gen: (d, a, r) => {
+      const k = d / 2.5;
+      return {
+        mouth: [[0, 0], [0.14 * k, 0.9], [1.6 * k, 0.75], [2.1 * k, 0], [d, 0]],
+        angY: [[0, 0], [0.14 * k, 0.5 * a], [1.5 * k, 0.4 * a], [2.15 * k, 0], [d, 0]],
+        body: [[0, 0], [0.14 * k, -0.4 * a], [1.6 * k, -0.3 * a], [2.2 * k, 0], [d, 0]],
+        eyes: [[0, 1], [2.05 * k, 1], [2.12 * k, 0], [2.18 * k, 0], [2.3 * k, 1], [d, 1]],
+      };
+    }
+  },
+];
+/* 共通の物差し → パラメータの実際の値 */
+function roleValue(kind, q, v) {
+  if (kind === 'open') return q.min + clamp(v, 0, 1) * (q.max - q.min);
+  v = clamp(v, -1, 1);
+  return q.def + v * (v > 0 ? q.max - q.def : q.def - q.min);
+}
+function buildTracks(map, keysByRole) {
+  const tracks = {};
+  for (const r of ROLES) {
+    const pid = map[r.key]; if (!pid) continue;
+    const src = keysByRole[r.key] || (EYE_ROLES.includes(r.key) ? keysByRole.eyes : null);
+    if (!src) continue;
+    const q = App.params.find(q => q.id === pid); if (!q) continue;
+    tracks[pid] = src.map(([t, v]) => [Math.round(t * 1000) / 1000, Math.round(roleValue(r.kind, q, v) * 1000) / 1000]);
+  }
+  return tracks;
+}
+/* 生成ダイアログ（役割の確認・強さ・長さ） */
+function showAutoDialog(tpl) {
+  const map = detectRoles();
+  // 目は見つかったものだけ表示（何も見つからなければ「両目」を出して選んでもらう）
+  const needed = ROLES.filter(r => tpl.roles.includes(r.key) && (r.key === 'eyeL' || r.key === 'eyeR' ? map[r.key] : r.key === 'eyes' ? map.eyes || (!map.eyeL && !map.eyeR) : true));
+  const opts = sel => '<option value="0">（使わない）</option>' + App.params.map(q => `<option value="${q.id}"${q.id === sel ? ' selected' : ''}>${esc(q.name)}</option>`).join('');
+  $('#asTitle').textContent = tpl.name;
+  $('#asBody').innerHTML = `
+    <div class="auto-note">どのパラメータを動かすか確認してください（名前から自動で選んでいます）</div>
+    ${needed.map(r => `<label class="f">${r.label}<select data-role="${r.key}">${opts(map[r.key])}</select></label>`).join('')}
+    <div class="row2">
+      <label class="f">強さ<select id="autoAmp"><option value="0.6">控えめ</option><option value="1" selected>ふつう</option><option value="1.4">大げさ</option></select></label>
+      <label class="f">長さ（秒）<input id="autoDur" type="number" inputmode="decimal" min="0.5" max="60" step="0.5" value="${tpl.dur}"></label>
+    </div>
+    <button id="autoGo" class="primary-btn">この内容で作る</button>`;
+  $('#actSheet').classList.remove('hidden');
+  $('#autoGo').onclick = () => {
+    for (const s of document.querySelectorAll('#asBody [data-role]')) App.roleMap[s.dataset.role] = +s.value;
+    const m2 = { ...map }; for (const r of needed) m2[r.key] = App.roleMap[r.key];
+    const amp = +$('#autoAmp').value, dur = clamp(+$('#autoDur').value || tpl.dur, 0.5, 60);
+    $('#actSheet').classList.add('hidden');
+    makeAutoMotion(tpl, m2, amp, dur);
+  };
+}
+function makeAutoMotion(tpl, map, amp, dur) {
+  const tracks = buildTracks(map, tpl.gen(dur, amp, Math.random));
+  if (!Object.keys(tracks).length) return toast('動かせるパラメータがありません。役割にパラメータを選んでください', 4000);
+  stopMotion();
+  let name = tpl.name.replace(/（.*）/, ''), n = 2;
+  while (App.motions.some(m => m.name === name)) name = tpl.name.replace(/（.*）/, '') + ' ' + n++;
+  const m = { id: App.nextMotionId++, name, dur, loop: true, tracks };
+  App.motions = [...App.motions, m]; App.curMotion = m.id; MO.t = 0;
+  App.editParam = null; renderParams(); setMode(App.mode);
+  commit(); renderMotion();
+  MO.playing = true; motionButtons(); wake();
+  toast(`「${name}」を作って再生しています。\nもう一度選ぶと別パターンができます`, 3500);
+}
+function addBlinksToCurrent() {
+  const m = curMo(); if (!m) return toast('先にモーションを選ぶか作ってください');
+  const map = detectRoles();
+  if (!EYE_ROLES.some(k => map[k])) return toast('目のパラメータが見つかりません。名前に「目」を含めてください', 4000);
+  const tracks = buildTracks(map, { eyes: blinkKeys(m.dur, Math.random, Math.max(1, Math.round(m.dur / 2.6))) });
+  const nm = { ...m, tracks: { ...m.tracks, ...tracks } };
+  App.motions = App.motions.map(x => x === m ? nm : x);
+  commit(); renderMotion(); toast('まばたきを入れました');
+}
+$('#moAuto').onclick = () => {
+  if (!App.doc) return toast('まだ何も開いていません');
+  if (!App.params.length) return toast('先に「パラメータ」タブで目・口・顔の向きなどのパラメータを作ってください', 4000);
+  showActions('おまかせでモーションを作る', [
+    ...TEMPLATES.map(t => ({ label: t.name, sub: `${t.dur}秒`, fn: () => setTimeout(() => showAutoDialog(t), 0) })),
+    ...(curMo() ? [{ label: `「${curMo().name}」にまばたきを入れる`, sub: '今のモーションの目の動きを置き換えます', fn: addBlinksToCurrent }] : []),
+  ]);
+};
+
+/* =========================================================
+   パラメータのおまかせ作成（オートリグ）
+   レイヤー名・グループ名からパーツの役割を判断し、
+   パラメータと各キーの形（変形・位置・回転・不透明度）を自動で作る
+   ========================================================= */
+const PART_CATS = [
+  { key: 'highlight', label: '目のハイライト', re: /ハイライト|highlight|光/i },
+  { key: 'eye', label: '目（白目・瞳・まつ毛など）', re: /白目|黒目|瞳|虹彩|まつ毛|まつげ|睫|まぶた|瞼|目|eye|iris|pupil|lash/i },
+  { key: 'brow', label: '眉', re: /眉|まゆ|brow/i },
+  { key: 'mouth', label: '口', re: /口|歯|舌|唇|mouth|teeth|tongue|lip/i },
+  { key: 'nose', label: '鼻', re: /鼻|nose/i },
+  { key: 'cheek', label: '頬', re: /頬|ほほ|チーク|赤面|cheek|blush/i },
+  { key: 'ear', label: '耳', re: /耳|ear/i },
+  { key: 'ahoge', label: 'アホ毛', re: /アホ毛|あほ毛|ahoge/i },
+  { key: 'hairFront', label: '前髪', re: /前髪|bang|fringe/i },
+  { key: 'hairSide', label: '横髪・その他の髪', re: /横髪|サイド|もみあげ|触角|side.?hair/i },
+  { key: 'hairBack', label: '後ろ髪', re: /後ろ髪|後髪|うしろ髪|back.?hair|ポニ|ツイン|おさげ|三つ編/i },
+  { key: 'hairSide', label: '横髪・その他の髪', re: /髪|hair/i },
+  { key: 'face', label: '顔（輪郭・肌）', re: /顔|輪郭|肌|face|head|skin/i },
+  { key: 'neck', label: '首', re: /首|neck/i },
+  { key: 'body', label: '体・服', re: /体|胴|服|腕|手|胸|肩|スカート|袖|body|arm|hand|cloth|torso/i },
+];
+const CAT_LIST = [...new Map(PART_CATS.map(c => [c.key, c.label])).entries()];
+const HEAD_CATS = new Set(['highlight', 'eye', 'brow', 'mouth', 'nose', 'cheek', 'ear', 'ahoge', 'hairFront', 'hairSide', 'hairBack', 'face']);
+const HAIR_CATS = new Set(['ahoge', 'hairFront', 'hairSide', 'hairBack']);
+function guessCat(p) {
+  const tries = [p.name, ...String(p.group || '').split('/').map(s => s.trim()).reverse()];
+  for (const s of tries) { if (!s) continue; const c = PART_CATS.find(c => c.re.test(s)); if (c) return c.key; }
+  return 'other';
+}
+/* 基本の形でのキャンバス上の範囲（回転・拡大は無視した目安） */
+function partBox(p) { return { x0: p.left + p.base.x, y0: p.top + p.base.y, x1: p.left + p.base.x + p.w, y1: p.top + p.base.y + p.h }; }
+function unionBox(parts) {
+  if (!parts.length) return null;
+  const b = { x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity };
+  for (const p of parts) { const q = partBox(p); b.x0 = Math.min(b.x0, q.x0); b.y0 = Math.min(b.y0, q.y0); b.x1 = Math.max(b.x1, q.x1); b.y1 = Math.max(b.y1, q.y1); }
+  b.w = b.x1 - b.x0; b.h = b.y1 - b.y0; b.cx = (b.x0 + b.x1) / 2; b.cy = (b.y0 + b.y1) / 2;
+  return b;
+}
+function sideOf(p, cx) {
+  const n = p.name + ' ' + (p.group || '');
+  if (/左|_l\b|\bl\b|left/i.test(n)) return 'L';
+  if (/右|_r\b|\br\b|right/i.test(n)) return 'R';
+  const b = partBox(p); return (b.x0 + b.x1) / 2 < cx ? 'L' : 'R';
+}
+/* パーツの各頂点について、キャンバス座標から変形量を決める関数でずれを作る */
+function offsBy(p, f) {
+  const V = p.mesh.verts, o = new Float32Array(V.length), X = p.left + p.base.x, Y = p.top + p.base.y;
+  for (let i = 0; i < V.length; i += 2) { const [dx, dy] = f(X + V[i], Y + V[i + 1], V[i] / p.w, V[i + 1] / p.h); o[i] = dx; o[i + 1] = dy; }
+  return o;
+}
+const KF = (o = {}) => ({ x: 0, y: 0, rot: 0, scale: 0, opacity: 0, offs: null, ...o });
+function needMesh(p) { if (vcount(p) === 4 && !hasAnyOffs(p)) { p.mesh = autoMesh(p, p.div); } }
+
+/* どのパラメータを作れるかを、パーツの役割から決める */
+function rigPlan(cats) {
+  const by = k => App.parts.filter(p => cats.get(p.id) === k);
+  const eyes = [...by('eye'), ...by('highlight')], brows = by('brow');
+  const faceB = unionBox(by('face')) || unionBox([...eyes, ...by('mouth')]) || { cx: App.doc.w / 2, cy: App.doc.h / 2, w: App.doc.w * 0.35, h: App.doc.h * 0.3, x0: 0, y0: 0, x1: App.doc.w, y1: App.doc.h };
+  const sides = new Set(eyes.map(p => sideOf(p, faceB.cx)));
+  const head = App.parts.filter(p => HEAD_CATS.has(cats.get(p.id)));
+  const body = [...by('body'), ...by('neck')], hair = App.parts.filter(p => HAIR_CATS.has(cats.get(p.id)));
+  const plan = [];
+  if (eyes.length) {
+    if (sides.size === 2) plan.push({ id: 'eyeL', name: '左目の開閉', sub: '画面の左側の目' }, { id: 'eyeR', name: '右目の開閉', sub: '画面の右側の目' });
+    else plan.push({ id: 'eyes', name: '目の開閉', sub: '両目まとめて' });
+  }
+  if (by('mouth').length) plan.push({ id: 'mouth', name: '口の開閉', sub: '口を縦に開く' });
+  if (head.length) plan.push({ id: 'angX', name: '顔の向き 左右', sub: '顔のパーツを奥行きに合わせてずらす' }, { id: 'angY', name: '顔の向き 上下' });
+  if (body.length) plan.push({ id: 'bodyX', name: '体の向き 左右' }, { id: 'breath', name: '呼吸', sub: '体がわずかに上下する' });
+  if (hair.length) plan.push({ id: 'sway', name: '髪揺れ', sub: '顔の向きに合わせて自動で揺れる設定も作る' });
+  return { plan, faceB, eyes, brows, by, head, body, hair };
+}
+function showRigDialog() {
+  if (!App.doc) return toast('まだ何も開いていません');
+  const cats = new Map(App.parts.map(p => [p.id, guessCat(p)]));
+  const draw = () => {
+    const { plan } = rigPlan(cats);
+    const exist = new Set(App.params.map(q => q.name));
+    const known = App.parts.filter(p => cats.get(p.id) !== 'other').length;
+    $('#asTitle').textContent = 'パラメータをおまかせで作る';
+    $('#asBody').innerHTML = `
+      <div class="auto-note">レイヤー名からパーツの役割を判断しました（${App.parts.length}個中${known}個）。違うところは下の「パーツの役割」で直せます。</div>
+      ${plan.length ? plan.map(r => `<label class="chk big"><input type="checkbox" data-rp="${r.id}" checked>${esc(r.name)}${exist.has(r.name) ? '<em>作り直し</em>' : ''}${r.sub ? `<small>${esc(r.sub)}</small>` : ''}</label>`).join('')
+        : '<div class="auto-note" style="color:var(--accent2)">作れるパラメータがありません。パーツの役割を選んでください。</div>'}
+      ${plan.some(r => r.id === 'mouth') ? `<label class="f">口の開き具合<select id="rigMouth"><option value="0.01">小さめ</option><option value="0.02" selected>ふつう</option><option value="0.035">大きめ</option></select></label>` : ''}
+      <details class="cats"><summary>パーツの役割（${App.parts.length}個）</summary>
+        ${[...App.parts].reverse().map(p => `<label class="f catrow"><span>${esc(p.name)}</span><select data-pc="${p.id}">
+          ${CAT_LIST.map(([k, l]) => `<option value="${k}"${cats.get(p.id) === k ? ' selected' : ''}>${l}</option>`).join('')}
+          <option value="other"${cats.get(p.id) === 'other' ? ' selected' : ''}>動かさない</option></select></label>`).join('')}
+      </details>
+      ${plan.length ? '<button id="rigGo" class="primary-btn">この内容で作る</button>' : ''}`;
+    for (const s of document.querySelectorAll('#asBody [data-pc]')) s.onchange = () => { cats.set(+s.dataset.pc, s.value); const open = $('#asBody details').open; draw(); $('#asBody details').open = open; };
+    const go = $('#rigGo');
+    if (go) go.onclick = () => {
+      const want = new Set([...document.querySelectorAll('#asBody [data-rp]')].filter(c => c.checked).map(c => c.dataset.rp));
+      const mouth = $('#rigMouth') ? +$('#rigMouth').value : 0.02;
+      $('#actSheet').classList.add('hidden');
+      if (want.size) autoRig(cats, want, { mouth });
+    };
+  };
+  draw();
+  $('#actSheet').classList.remove('hidden');
+}
+/* 同じ名前があれば使い回し（範囲は合わせる）、なければ作る */
+function ensureParam(name, min, max, def) {
+  const old = App.params.find(q => q.name === name);
+  if (old) { const nq = { ...old, min, max, def, value: def }; App.params = App.params.map(q => q === old ? nq : q); return nq; }
+  const q = { id: App.nextParamId++, name, min, max, def, value: def };
+  App.params = [...App.params, q]; return q;
+}
+function bindKeys(p, q, keys) {
+  const nb = { ...p.binds }; nb[q.id] = {};
+  for (const k in keys) nb[q.id][keyStr(+k)] = keys[k];
+  p.binds = nb;
+}
+function autoRig(cats, want, opts = {}) {
+  stopPlay(); stopMotion();
+  const R = rigPlan(cats), { faceB, by } = R, made = [];
+  const cat = p => cats.get(p.id);
+  const fw = faceB.w, fh = faceB.h;
+  // 変形するパーツにはメッシュを張っておく
+  for (const p of App.parts) if (cat(p) !== 'other' && !['brow', 'ear', 'neck'].includes(cat(p))) needMesh(p);
+  // 既存の形を消すパラメータでは、対象パーツの古いキーを消す
+  const clearOld = q => { for (const p of App.parts) if (p.binds[q.id]) { const nb = { ...p.binds }; delete nb[q.id]; p.binds = nb; } };
+
+  // ---- 目の開閉：目の範囲の少し下へ縦につぶす ----
+  const blink = (q, eyes, brows) => {
+    clearOld(q);
+    const b = unionBox(eyes); if (!b) return;
+    const yc = b.y0 + b.h * 0.62;
+    for (const p of eyes) {
+      const k = { offs: offsBy(p, (x, y) => [0, (yc - y) * 0.92]) };
+      if (cat(p) === 'highlight') k.opacity = -1;
+      bindKeys(p, q, { 0: KF(k) });
+    }
+    for (const p of brows) bindKeys(p, q, { 0: KF({ y: b.h * 0.12 }) });
+    made.push(q.name);
+  };
+  if (want.has('eyeL') || want.has('eyeR')) {
+    for (const [id, side, name] of [['eyeL', 'L', '左目の開閉'], ['eyeR', 'R', '右目の開閉']]) {
+      if (!want.has(id)) continue;
+      blink(ensureParam(name, 0, 1, 1), R.eyes.filter(p => sideOf(p, faceB.cx) === side), R.brows.filter(p => sideOf(p, faceB.cx) === side));
+    }
+  }
+  if (want.has('eyes')) blink(ensureParam('目の開閉', 0, 1, 1), R.eyes, R.brows);
+
+  // ---- 口の開閉：口の中心から縦に広げる ----
+  if (want.has('mouth')) {
+    const q = ensureParam('口の開閉', 0, 1, 0); clearOld(q);
+    // 上唇あたり（上から35%）を軸にして、下側を少しだけ下げる。上側はほんの少し上がる
+    const ms = by('mouth'), b = unionBox(ms), ya = b.y0 + b.h * 0.35, open = fh * (opts.mouth || 0.02);
+    for (const p of ms) bindKeys(p, q, { 1: KF({ offs: offsBy(p, (x, y) => [(x - b.cx) * -0.04, y >= ya ? (y - ya) / Math.max(1, b.y1 - ya) * open : (y - ya) / Math.max(1, ya - b.y0) * open * 0.15]) }) });
+    made.push(q.name);
+  }
+
+  // ---- 顔の向き：奥行きごとにずらす量を変え、丸みのある膨らみも足す ----
+  // 耳は顔の輪郭と一緒に動かす（逆に動かすと顔から離れて浮いて見える）
+  const DEPTH_X = { eye: 0.075, highlight: 0.08, brow: 0.075, mouth: 0.07, nose: 0.095, cheek: 0.06, ear: 0.012, ahoge: 0.035, hairFront: 0.05, hairSide: 0.005, hairBack: -0.045, face: 0.012 };
+  const BULGE = { face: 0.035, hairFront: 0.03, hairBack: 0.015 };
+  if (want.has('angX')) {
+    const q = ensureParam('顔の向き 左右', -30, 30, 0); clearOld(q);
+    for (const p of R.head) {
+      const c = cat(p), d = (DEPTH_X[c] || 0) * fw, bl = (BULGE[c] || 0) * fw;
+      const mk = s => bl ? KF({ x: s * d, offs: offsBy(p, (x) => { const u = clamp((x - faceB.cx) / (fw / 2), -1.2, 1.2); return [s * bl * Math.max(0, 1 - u * u), 0]; }) }) : KF({ x: s * d });
+      bindKeys(p, q, { 30: mk(1), '-30': mk(-1) });
+    }
+    made.push(q.name);
+  }
+  if (want.has('angY')) {
+    const q = ensureParam('顔の向き 上下', -30, 30, 0); clearOld(q);
+    const DY = { eye: -0.05, highlight: -0.055, brow: -0.06, mouth: -0.045, nose: -0.06, cheek: -0.04, ear: -0.008, ahoge: -0.02, hairFront: -0.03, hairSide: 0, hairBack: 0.03, face: -0.008 };
+    for (const p of R.head) {
+      const c = cat(p), d = (DY[c] || 0) * fh, bl = (BULGE[c] || 0) * fh * -0.8;
+      const mk = s => bl ? KF({ y: s * d, offs: offsBy(p, (x, y) => { const u = clamp((y - faceB.cy) / (fh / 2), -1.2, 1.2); return [0, s * bl * Math.max(0, 1 - u * u)]; }) }) : KF({ y: s * d });
+      bindKeys(p, q, { 30: mk(1), '-30': mk(-1) });
+    }
+    made.push(q.name);
+  }
+
+  // ---- 体の向き：体は少し、頭はそれより大きく横へ ----
+  if (want.has('bodyX')) {
+    const q = ensureParam('体の向き 左右', -10, 10, 0); clearOld(q);
+    const bb = unionBox(R.body);
+    for (const p of R.body) {
+      const mk = s => KF({ offs: offsBy(p, (x, y) => { const u = clamp((x - bb.cx) / (bb.w / 2), -1.2, 1.2), up = 1 - clamp((y - bb.y0) / bb.h, 0, 1); return [s * fw * (0.025 * Math.max(0, 1 - u * u) + 0.02 * up), 0]; }) });
+      bindKeys(p, q, { 10: mk(1), '-10': mk(-1) });
+    }
+    for (const p of R.head) bindKeys(p, q, { 10: KF({ x: fw * 0.05, rot: 2 }), '-10': KF({ x: -fw * 0.05, rot: -2 }) });
+    made.push(q.name);
+  }
+
+  // ---- 呼吸：体の上の方ほど少し持ち上がり、頭もついてくる ----
+  if (want.has('breath')) {
+    const q = ensureParam('呼吸', 0, 1, 0); clearOld(q);
+    const bb = unionBox(R.body), lift = App.doc.h * 0.006;
+    for (const p of R.body) bindKeys(p, q, { 1: KF({ offs: offsBy(p, (x, y) => [0, -lift * (1 - clamp((y - bb.y0) / bb.h, 0, 1))]) }) });
+    for (const p of R.head) bindKeys(p, q, { 1: KF({ y: -lift }) });
+    made.push(q.name);
+  }
+
+  // ---- 髪揺れ：毛先ほど大きく横に。アホ毛は回転。揺れ（物理）も作る ----
+  if (want.has('sway')) {
+    const q = ensureParam('髪揺れ', -1, 1, 0); clearOld(q);
+    for (const p of R.hair) {
+      if (cat(p) === 'ahoge') { bindKeys(p, q, { 1: KF({ rot: 18 }), '-1': KF({ rot: -18 }) }); continue; }
+      const amt = p.h * (cat(p) === 'hairFront' ? 0.06 : 0.12);
+      const o = offsBy(p, (x, y, u, v) => [Math.pow(v, 1.6) * amt, 0]);
+      bindKeys(p, q, { 1: KF({ offs: o }), '-1': KF({ offs: o.map(v => -v) }) });
+    }
+    const inp = App.params.find(x => x.name === '顔の向き 左右') || App.params.find(x => /向き/.test(x.name) && x.id !== q.id);
+    if (inp && !App.physics.some(g => g.out === q.id)) {
+      App.physics = [...App.physics, { id: App.nextPhysId++, name: '髪の揺れ', inp: inp.id, out: q.id, len: 0.55, damp: 3, str: 1, inv: false }];
+      App.physOn = true;
+    }
+    made.push(q.name);
+  }
+
+  App.editParam = null;
+  evaluateAll(); commit();
+  renderList(); renderParams(); renderPhys(); renderMotion(); updateProps(); setMode(App.mode);
+  showTab('params'); openSheet(true);
+  toast(`${made.length}個のパラメータを作りました。\n動きを確認しています（止めるときは「■ 止める」）`, 4000);
+  $('#playParams').click();
+}
+$('#autoRig').onclick = showRigDialog;
+
+/* =========================================================
+   1枚絵からパーツ分け
+   - 指で塗った範囲を、色の境目に合わせて整えてから切り抜く
+   - 切り抜いた後ろの穴は、周りの色をなめらかに広げて埋める（プッシュ・プル法）
+   - 完了すると元のパーツを「残り」と切り出したパーツに置き換える（元に戻せる）
+   ========================================================= */
+const SPLIT_STEPS = [
+  { name: 'アホ毛', hint: '頭のてっぺんで跳ねている毛', fill: false, opt: true },
+  { name: '前髪', hint: 'おでこにかかる髪をまとめて', fill: true },
+  { name: '横髪', hint: '顔の横に垂れる髪（左右まとめてOK）', fill: true, opt: true },
+  { name: '左眉', hint: '画面の左側の眉', fill: true },
+  { name: '右眉', hint: '画面の右側の眉', fill: true },
+  { name: '左目', hint: '画面の左側の目。白目・瞳・まつ毛まで目全体', fill: true },
+  { name: '右目', hint: '画面の右側の目。白目・瞳・まつ毛まで目全体', fill: true },
+  { name: '鼻', hint: '鼻の線や影', fill: true, opt: true },
+  { name: '口', hint: '口の線・口の中', fill: true },
+  { name: '頬', hint: '頬の赤み（あれば）', fill: true, opt: true },
+  { name: '耳', hint: '見えている耳（あれば）', fill: false, opt: true },
+  { name: '顔', hint: '肌の部分を輪郭の線まで', fill: true },
+  { name: '首', hint: '首の肌の部分', fill: true },
+  { name: '体', hint: '服・腕・手など', fill: false },
+  { name: '後ろ髪', hint: '残った部分がこの名前のパーツになります', remainder: true },
+];
+const SP = { on: false };
+const spCv = $('#spCv'), spCtx = spCv.getContext('2d');
+
+function offerSplit() {
+  showActions('1枚の絵として開きました', [
+    { label: '✂ パーツに分ける', sub: '目・口・前髪などを、なぞるだけで切り出します', fn: () => setTimeout(() => { App.sel = App.parts[0]; openSplit(); }, 0) },
+    { label: 'このまま使う', fn: () => { } },
+  ]);
+}
+function openSplit() {
+  if (!App.doc) return toast('まだ何も開いていません');
+  const src = App.sel || [...App.parts].sort((a, b) => b.w * b.h - a.w * a.h)[0];
+  if (!src) return;
+  if ((Object.keys(src.binds).length || hasAnyOffs(src)) && !confirm(`「${src.name}」のパラメータや変形の設定は、分けたあとのパーツには引き継がれません。続けますか？`)) return;
+  stopPlay(); stopMotion();
+  const W = src.w, H = src.h, work = mkCanvas(W, H), wctx = work.getContext('2d', { willReadFrequently: true });
+  wctx.drawImage(src.canvas, 0, 0);
+  Object.assign(SP, {
+    on: true, src, W, H, work, wctx, data: wctx.getImageData(0, 0, W, H),
+    mask: new Uint8Array(W * H), maskCv: mkCanvas(W, H), cuts: [], hist: [],
+    steps: SPLIT_STEPS.map(s => ({ ...s, done: false })), cur: 0,
+    tool: 'paint', size: 36, tol: 40, cam: null, ptrs: new Map(), g: null, cursor: null, remName: '後ろ髪',
+  });
+  SP.mctx = SP.maskCv.getContext('2d');
+  SP.ver = (SP.ver || 0) + 1; aiReset();
+  $('#split').classList.remove('hidden');
+  spSetTool('paint'); spGoto(0);
+  toast('「✨ AI」を選ぶと、タップするだけで範囲を選べます（初回は通信が必要）', 4000);
+  requestAnimationFrame(() => { spFit(); spDraw(); });
+}
+function closeSplit() { SP.on = false; $('#split').classList.add('hidden'); requestRender(); }
+
+/* ---------- 表示 ---------- */
+function spFit() {
+  const r = spCv.getBoundingClientRect(), m = 16;
+  const s = Math.min((r.width - m * 2) / SP.W, (r.height - m * 2) / SP.H);
+  SP.cam = { s, x: (r.width - SP.W * s) / 2, y: (r.height - SP.H * s) / 2 };
+}
+let spQueued = false;
+function spDraw() {
+  if (spQueued) return; spQueued = true;
+  requestAnimationFrame(() => {
+    spQueued = false; if (!SP.on) return;
+    const dpr = Math.min(window.devicePixelRatio || 1, 3), r = spCv.getBoundingClientRect();
+    if (spCv.width !== Math.round(r.width * dpr) || spCv.height !== Math.round(r.height * dpr)) { spCv.width = Math.round(r.width * dpr); spCv.height = Math.round(r.height * dpr); }
+    const c = spCtx; c.setTransform(dpr, 0, 0, dpr, 0, 0); c.clearRect(0, 0, r.width, r.height);
+    if (!SP.cam) spFit();
+    const { s, x, y } = SP.cam;
+    c.save(); c.translate(x, y); c.scale(s, s);
+    c.fillStyle = '#e8e8ee'; c.fillRect(0, 0, SP.W, SP.H);
+    c.imageSmoothingEnabled = s < 2;
+    c.drawImage(SP.work, 0, 0);
+    if ($('#spShowCut').checked) { c.globalAlpha = 0.3; for (const k of SP.cuts) c.drawImage(k.canvas, k.x, k.y); c.globalAlpha = 1; }
+    c.globalAlpha = 0.55; c.drawImage(SP.maskCv, 0, 0); c.globalAlpha = 1;
+    c.restore();
+    if (SP.tool === 'ai') for (const [px, py, lb] of AI.points) {          // AIに渡した点
+      const X = x + (px + 0.5) * s, Y = y + (py + 0.5) * s;
+      c.fillStyle = lb ? '#3ddc84' : '#ff5a5a'; c.strokeStyle = '#fff'; c.lineWidth = 2;
+      c.beginPath(); c.arc(X, Y, 7, 0, 7); c.fill(); c.stroke();
+      c.fillStyle = '#fff'; c.fillRect(X - 4, Y - 1, 8, 2); if (lb) c.fillRect(X - 1, Y - 4, 2, 8);
+    }
+    if (AI.busy) { c.fillStyle = 'rgba(0,0,0,.25)'; c.fillRect(0, 0, r.width, r.height); }
+    if (SP.cursor && SP.tool !== 'wand') {
+      c.strokeStyle = '#fff'; c.lineWidth = 1.5; c.beginPath(); c.arc(SP.cursor.x, SP.cursor.y, SP.size / 2, 0, 7); c.stroke();
+      c.strokeStyle = 'rgba(0,0,0,.5)'; c.lineWidth = 1; c.beginPath(); c.arc(SP.cursor.x, SP.cursor.y, SP.size / 2 + 1.5, 0, 7); c.stroke();
+    }
+  });
+}
+/* マスクの一部をピンクの重ね表示に反映 */
+function spMaskView(x0, y0, x1, y1) {
+  x0 = clamp(Math.floor(x0), 0, SP.W - 1); y0 = clamp(Math.floor(y0), 0, SP.H - 1);
+  x1 = clamp(Math.ceil(x1), 0, SP.W - 1); y1 = clamp(Math.ceil(y1), 0, SP.H - 1);
+  const w = x1 - x0 + 1, h = y1 - y0 + 1, img = SP.mctx.createImageData(w, h), d = img.data;
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    if (SP.mask[(y0 + y) * SP.W + x0 + x]) { const j = (y * w + x) * 4; d[j] = 255; d[j + 1] = 60; d[j + 2] = 140; d[j + 3] = 255; }
+  }
+  SP.mctx.putImageData(img, x0, y0);
+}
+const spAlpha = i => SP.data.data[i * 4 + 3];
+
+/* ---------- 塗る・消す・タップ選択 ---------- */
+function spStamp(cx, cy, r, val, box) {
+  const x0 = Math.max(0, Math.floor(cx - r)), x1 = Math.min(SP.W - 1, Math.ceil(cx + r));
+  const y0 = Math.max(0, Math.floor(cy - r)), y1 = Math.min(SP.H - 1, Math.ceil(cy + r)), r2 = r * r;
+  for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
+    const dx = x - cx, dy = y - cy; if (dx * dx + dy * dy > r2) continue;
+    const i = y * SP.W + x; if (val && spAlpha(i) < 8) continue;
+    SP.mask[i] = val;
+  }
+  box[0] = Math.min(box[0], x0); box[1] = Math.min(box[1], y0); box[2] = Math.max(box[2], x1); box[3] = Math.max(box[3], y1);
+}
+function spLine(a, b, r, val, box) {
+  const d = Math.hypot(b[0] - a[0], b[1] - a[1]), n = Math.max(1, Math.ceil(d / Math.max(1, r / 3)));
+  for (let i = 1; i <= n; i++) spStamp(a[0] + (b[0] - a[0]) * i / n, a[1] + (b[1] - a[1]) * i / n, r, val, box);
+}
+function spWand(px, py) {
+  const W = SP.W, H = SP.H, D = SP.data.data, si = py * W + px;
+  if (px < 0 || py < 0 || px >= W || py >= H || D[si * 4 + 3] < 8) return null;
+  const sr = D[si * 4], sg = D[si * 4 + 1], sb = D[si * 4 + 2], t2 = SP.tol * SP.tol * 3;
+  const seen = new Uint8Array(W * H), st = [si]; seen[si] = 1;
+  const box = [px, py, px, py];
+  while (st.length) {
+    const i = st.pop(), x = i % W, y = (i / W) | 0;
+    SP.mask[i] = 1;
+    if (x < box[0]) box[0] = x; if (x > box[2]) box[2] = x; if (y < box[1]) box[1] = y; if (y > box[3]) box[3] = y;
+    for (const j of [x > 0 ? i - 1 : -1, x < W - 1 ? i + 1 : -1, y > 0 ? i - W : -1, y < H - 1 ? i + W : -1]) {
+      if (j < 0 || seen[j]) continue; seen[j] = 1;
+      const k = j * 4; if (D[k + 3] < 8) continue;
+      const dr = D[k] - sr, dg = D[k + 1] - sg, db = D[k + 2] - sb;
+      if (dr * dr + dg * dg + db * db <= t2) st.push(j);
+    }
+  }
+  return box;
+}
+
+/* ---------- 色の境目に合わせる ----------
+   塗った範囲の内側の色と、そのすぐ外側の色の分布を比べ、
+   境目付近の画素をどちらに近いかで振り分け直す */
+function boxFilter(m, w, h, r, mode) {           // 正方形の膨張(mode=1)・収縮(mode=0)
+  const tmp = new Uint8Array(w * h), out = new Uint8Array(w * h), win = 2 * r + 1;
+  for (let y = 0; y < h; y++) {
+    let s = 0; const o = y * w;
+    for (let x = -r; x <= r; x++) s += x >= 0 && x < w ? m[o + x] : (mode ? 0 : 1);
+    for (let x = 0; x < w; x++) {
+      tmp[o + x] = mode ? (s > 0 ? 1 : 0) : (s === win ? 1 : 0);
+      const xa = x - r, xb = x + r + 1;
+      s -= xa >= 0 ? m[o + xa] : (mode ? 0 : 1); s += xb < w ? m[o + xb] : (mode ? 0 : 1);
+    }
+  }
+  for (let x = 0; x < w; x++) {
+    let s = 0;
+    for (let y = -r; y <= r; y++) s += y >= 0 && y < h ? tmp[y * w + x] : (mode ? 0 : 1);
+    for (let y = 0; y < h; y++) {
+      out[y * w + x] = mode ? (s > 0 ? 1 : 0) : (s === win ? 1 : 0);
+      const ya = y - r, yb = y + r + 1;
+      s -= ya >= 0 ? tmp[ya * w + x] : (mode ? 0 : 1); s += yb < h ? tmp[yb * w + x] : (mode ? 0 : 1);
+    }
+  }
+  return out;
+}
+function spSnap(box, r) {
+  r = Math.max(2, Math.min(30, Math.round(r)));
+  const x0 = Math.max(0, box[0] - r * 2), y0 = Math.max(0, box[1] - r * 2), x1 = Math.min(SP.W - 1, box[2] + r * 2), y1 = Math.min(SP.H - 1, box[3] + r * 2);
+  const w = x1 - x0 + 1, h = y1 - y0 + 1, m = new Uint8Array(w * h), D = SP.data.data;
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) m[y * w + x] = SP.mask[(y0 + y) * SP.W + x0 + x];
+  // 削るのは塗った内側 r まで、足すのは外側へ少しだけ（塗っていない別の場所まで広がらないように）
+  const dil = boxFilter(m, w, h, r, 1), ero = boxFilter(m, w, h, r, 0), grow = boxFilter(m, w, h, Math.max(2, Math.round(r * 0.3)), 1);
+  const hin = new Float32Array(4096), hout = new Float32Array(4096);
+  const q = j => ((D[j] >> 4) << 8) | ((D[j + 1] >> 4) << 4) | (D[j + 2] >> 4);
+  let nin = 0, nout = 0;
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const i = y * w + x, j = ((y0 + y) * SP.W + x0 + x) * 4; if (D[j + 3] < 8) continue;
+    if (m[i]) { hin[q(j)]++; nin++; } else if (dil[i]) { hout[q(j)]++; nout++; }
+  }
+  if (nin < 20 || nout < 20) return;
+  const out = m.slice();
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const i = y * w + x; if (!grow[i] || ero[i]) continue;
+    const j = ((y0 + y) * SP.W + x0 + x) * 4; if (D[j + 3] < 8) { out[i] = 0; continue; }
+    const k = q(j), pin = (hin[k] + 0.2) / nin, pout = (hout[k] + 0.2) / nout;
+    out[i] = pin > pout * 1.1 ? 1 : 0;
+  }
+  // ぽつぽつ残った点を、周り3×3の多数決でならす
+  const fin = out.slice();
+  for (let y = 1; y < h - 1; y++) for (let x = 1; x < w - 1; x++) {
+    const i = y * w + x; if (!grow[i] || ero[i]) continue;
+    let s = 0; for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) s += out[i + dy * w + dx];
+    fin[i] = s >= 5 ? 1 : 0;
+  }
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) SP.mask[(y0 + y) * SP.W + x0 + x] = fin[y * w + x];
+  SP.mctx.clearRect(x0, y0, w, h); spMaskView(x0, y0, x1, y1);
+}
+
+/* ---------- 穴埋め（プッシュ・プル法） ----------
+   分かっている色を縮小しながら平均し、拡大しながら穴へ流し込む */
+function pushPull(R, G, B, Wt, w, h) {
+  let any = false; for (let i = 0; i < Wt.length; i++) if (Wt[i] < 1) { any = true; break; }
+  if (!any || (w <= 1 && h <= 1)) return;
+  const w2 = Math.ceil(w / 2), h2 = Math.ceil(h / 2), n2 = w2 * h2;
+  const R2 = new Float32Array(n2), G2 = new Float32Array(n2), B2 = new Float32Array(n2), W2 = new Float32Array(n2);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const i = y * w + x, j = (y >> 1) * w2 + (x >> 1), wt = Wt[i];
+    R2[j] += R[i] * wt; G2[j] += G[i] * wt; B2[j] += B[i] * wt; W2[j] += wt;
+  }
+  for (let j = 0; j < n2; j++) { if (W2[j] > 0) { R2[j] /= W2[j]; G2[j] /= W2[j]; B2[j] /= W2[j]; } W2[j] = Math.min(1, W2[j]); }
+  pushPull(R2, G2, B2, W2, w2, h2);
+  // 粗い段から細かい段へ、なめらかに（双一次補間で）色を流し込む
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const i = y * w + x, wt = Wt[i]; if (wt >= 1) continue;
+    const fx = clamp((x + 0.5) / 2 - 0.5, 0, w2 - 1), fy = clamp((y + 0.5) / 2 - 0.5, 0, h2 - 1);
+    const ax = Math.floor(fx), ay = Math.floor(fy), bx = Math.min(w2 - 1, ax + 1), by = Math.min(h2 - 1, ay + 1), tx = fx - ax, ty = fy - ay;
+    const a = ay * w2 + ax, b = ay * w2 + bx, c = by * w2 + ax, d = by * w2 + bx;
+    const k0 = (1 - tx) * (1 - ty), k1 = tx * (1 - ty), k2 = (1 - tx) * ty, k3 = tx * ty;
+    const r2 = R2[a] * k0 + R2[b] * k1 + R2[c] * k2 + R2[d] * k3, g2 = G2[a] * k0 + G2[b] * k1 + G2[c] * k2 + G2[d] * k3, b2 = B2[a] * k0 + B2[b] * k1 + B2[c] * k2 + B2[d] * k3;
+    R[i] = R[i] * wt + r2 * (1 - wt); G[i] = G[i] * wt + g2 * (1 - wt); B[i] = B[i] * wt + b2 * (1 - wt); Wt[i] = 1;
+  }
+}
+
+/* ---------- 切り出す ---------- */
+function spCut() {
+  const st = SP.steps[SP.cur], W = SP.W, H = SP.H, M = SP.mask, D = SP.data.data;
+  let x0 = W, y0 = H, x1 = -1, y1 = -1;
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (M[y * W + x]) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+  if (x1 < 0) return toast('まだ塗られていません。指でなぞってください');
+  // 境界を1px ぼかした柔らかいマスク（切り口のギザギザを抑える）
+  const soft = i => { const x = i % W, y = (i / W) | 0; let s = 0, n = 0; for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) { const xx = x + dx, yy = y + dy; if (xx < 0 || yy < 0 || xx >= W || yy >= H) continue; s += M[yy * W + xx]; n++; } return s / n; };
+  const cw = x1 - x0 + 1, ch = y1 - y0 + 1, part = mkCanvas(cw, ch), pctx = part.getContext('2d');
+  const pimg = pctx.createImageData(cw, ch);
+  for (let y = 0; y < ch; y++) for (let x = 0; x < cw; x++) {
+    const i = (y0 + y) * W + x0 + x, k = (y * cw + x) * 4, a = soft(i); if (a <= 0) continue;
+    pimg.data[k] = D[i * 4]; pimg.data[k + 1] = D[i * 4 + 1]; pimg.data[k + 2] = D[i * 4 + 2]; pimg.data[k + 3] = D[i * 4 + 3] * a;
+  }
+  pctx.putImageData(pimg, 0, 0);
+  // 残りの絵から切り抜き、必要なら穴を埋める
+  const fill = $('#spFill').checked;
+  const pad = Math.max(24, Math.round(Math.max(cw, ch) * 0.35));
+  const fx0 = Math.max(0, x0 - pad), fy0 = Math.max(0, y0 - pad), fx1 = Math.min(W - 1, x1 + pad), fy1 = Math.min(H - 1, y1 + pad);
+  const fw = fx1 - fx0 + 1, fh = fy1 - fy0 + 1;
+  if (fill) {
+    const n = fw * fh, R = new Float32Array(n), Gc = new Float32Array(n), B = new Float32Array(n), Wt = new Float32Array(n), hole = new Uint8Array(n);
+    for (let y = 0; y < fh; y++) for (let x = 0; x < fw; x++) {
+      const i = (fy0 + y) * W + fx0 + x, j = y * fw + x, k = i * 4;
+      // 穴は1px 広めに取り、切り口の線の色が残らないようにする
+      let h = 0; for (let dy = -1; dy <= 1 && !h; dy++) for (let dx = -1; dx <= 1; dx++) { const xx = fx0 + x + dx, yy = fy0 + y + dy; if (xx >= 0 && yy >= 0 && xx < W && yy < H && M[yy * W + xx]) { h = 1; break; } }
+      hole[j] = h;
+      R[j] = D[k]; Gc[j] = D[k + 1]; B[j] = D[k + 2];
+      Wt[j] = !h && D[k + 3] > 200 ? 1 : 0;
+    }
+    pushPull(R, Gc, B, Wt, fw, fh);
+    for (let y = 0; y < fh; y++) for (let x = 0; x < fw; x++) {
+      const j = y * fw + x; if (!hole[j]) continue;
+      const k = ((fy0 + y) * W + fx0 + x) * 4; if (D[k + 3] < 8) continue;
+      D[k] = R[j]; D[k + 1] = Gc[j]; D[k + 2] = B[j];
+    }
+  } else {
+    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) { const i = y * W + x; if (M[i]) D[i * 4 + 3] = 0; else { const a = soft(i); if (a > 0) D[i * 4 + 3] *= 1 - a; } }
+  }
+  SP.wctx.putImageData(SP.data, 0, 0);
+  SP.cuts.push({ name: st.name, canvas: part, x: x0, y: y0 });
+  st.done = true;
+  M.fill(0); SP.mctx.clearRect(0, 0, W, H); SP.hist = [];
+  SP.ver++; aiReset();                                   // 絵が変わったのでAIは読み取り直す
+  toast(`「${st.name}」を切り出しました`, 1500);
+  spNext();
+}
+function spNext() {
+  let i = SP.cur + 1;
+  while (i < SP.steps.length - 1 && SP.steps[i].done) i++;
+  spGoto(Math.min(i, SP.steps.length - 1));
+}
+function spGoto(i) {
+  if (SP.mask.some(v => v) && i !== SP.cur && !confirm('塗った範囲はまだ切り出していません。捨てて移動しますか？')) return;
+  SP.mask.fill(0); SP.mctx.clearRect(0, 0, SP.W, SP.H); SP.hist = [];
+  SP.cur = i; const st = SP.steps[i];
+  $('#spStepName').textContent = st.remainder ? '仕上げ' : st.name;
+  $('#spStepNo').textContent = st.remainder ? `${SP.cuts.length}個 切り出し済み` : `${i + 1} / ${SP.steps.length - 1}${st.opt ? '（なければスキップ）' : ''}`;
+  aiReset(); spHintStep();
+  $('#spFill').checked = !!st.fill;
+  for (const el of document.querySelectorAll('.sp-work')) el.classList.toggle('hidden', !!st.remainder);
+  $('#spRem').classList.toggle('hidden', !st.remainder);
+  $('#spRemName').value = SP.remName;
+  $('#spSteps').innerHTML = SP.steps.map((s, k) => `<button data-sp="${k}" class="${k === i ? 'on' : ''}${s.done ? ' done' : ''}">${s.done ? '✓ ' : ''}${esc(s.remainder ? '残り' : s.name)}</button>`).join('') + '<button data-sp="add">＋ 自由に</button>';
+  const chip = document.querySelector(`#spSteps [data-sp="${i}"]`); if (chip) chip.scrollIntoView({ inline: 'center', block: 'nearest' });
+  spDraw();
+}
+function spSetTool(t) {
+  SP.tool = t;
+  for (const b of document.querySelectorAll('#split [data-tool]')) b.classList.toggle('on', b.dataset.tool === t);
+  $('#spAiBar').classList.toggle('hidden', t !== 'ai');
+  $('.sp-size').classList.toggle('hidden', t === 'ai');
+  $('#spSnap').parentElement.classList.toggle('hidden', t === 'ai');
+  if (SP.steps) spHintStep();
+  const sl = $('#spSize');
+  if (t === 'wand') { $('#spSizeL').textContent = '色の近さ'; sl.min = 5; sl.max = 120; sl.value = SP.tol; }
+  else { $('#spSizeL').textContent = '太さ'; sl.min = 6; sl.max = 140; sl.value = SP.size; }
+}
+/* 完了：元のパーツを置き換える */
+function spFinish() {
+  if (SP.mask.some(v => v) && !confirm('塗った範囲はまだ切り出していません。捨てて完了しますか？')) return;
+  if (!SP.cuts.length) { closeSplit(); return toast('切り出したパーツがないので、そのまま閉じました'); }
+  const src = SP.src, idx = App.parts.indexOf(src);
+  const rest = makePart({ canvas: SP.work, left: src.left, top: src.top, name: SP.remName || '残り', group: src.group, x: src.base.x, y: src.base.y, opacity: src.base.opacity });
+  const cuts = SP.cuts.map(k => makePart({ canvas: k.canvas, left: src.left + k.x, top: src.top + k.y, name: k.name, group: src.group, x: src.base.x, y: src.base.y, opacity: src.base.opacity }));
+  const added = [rest, ...cuts.reverse()].filter(Boolean);       // 最初に切った（手前の）パーツほど上に
+  App.parts.splice(idx, 1, ...added);
+  App.sel = null;
+  closeSplit();
+  commit(); renderList(); updateProps(); requestRender();
+  $('#docName').textContent = `${App.doc.name}（${App.doc.w}×${App.doc.h}・${App.parts.length}パーツ）`;
+  showTab('parts'); openSheet(true);
+  showActions(`${added.length}個のパーツに分けました`, [
+    { label: '✨ 続けてパラメータをおまかせで作る', sub: 'まばたき・口・顔の向き・髪揺れなど', fn: () => setTimeout(showRigDialog, 0) },
+    { label: 'あとで', fn: () => { } },
+  ]);
+}
+
+
+/* =========================================================
+   AIでタップ切り抜き（Segment Anything の軽量版 SlimSAM）
+   - 初めて使うときに、ブラウザへAIを読み込む（CDN・Hugging Face から）
+   - 絵の読み取り（埋め込み）は1回だけ。タップのたびに範囲を推定する
+   - 「＋選ぶ」の点は含める、「−除く」の点は含めない
+   ========================================================= */
+const AI_LIB = 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.3.3';
+const AI_MODEL = 'Xenova/slimsam-77-uniform';
+const AI = { lib: null, model: null, proc: null, loading: null, inputs: null, emb: null, embFor: -1, busy: false, points: [], mdata: null, mdims: null, scores: null, pick: 0, sign: 1, pending: false };
+SP.ver = 0;
+function spHintSet(t) { $('#spHint').textContent = t; }
+function spHintStep() { const st = SP.steps[SP.cur]; spHintSet(st.remainder ? '残った部分に名前を付けて「完了」を押してください' : `${st.name}を${SP.tool === 'ai' ? 'タップしてください' : 'なぞってください'}：${st.hint}`); }
+async function aiLoad() {
+  if (AI.model) return;
+  if (!AI.loading) AI.loading = (async () => {
+    spHintSet('AIを準備しています…（初回だけダウンロードがあります）');
+    const T = await import(AI_LIB);
+    T.env.allowLocalModels = false;
+    const prog = {};
+    const cb = d => {
+      if (d.status === 'progress' && d.file) {
+        prog[d.file] = d.progress || 0;
+        const v = Object.values(prog);
+        spHintSet(`AIをダウンロード中… ${Math.round(v.reduce((a, b) => a + b, 0) / v.length)}%（初回のみ）`);
+      }
+    };
+    let gpu = false;
+    try { gpu = !!(navigator.gpu && await navigator.gpu.requestAdapter()); } catch (e) { }
+    // 速い順に試す：WebGPU(16bit) → WebGPU(32bit) → WebAssembly(軽量版)
+    const tries = gpu ? [{ dtype: 'fp16', device: 'webgpu' }, { dtype: 'fp32', device: 'webgpu' }, { dtype: 'q8', device: 'wasm' }] : [{ dtype: 'q8', device: 'wasm' }, { dtype: 'fp32', device: 'wasm' }];
+    let err;
+    for (const o of tries) {
+      try { AI.model = await T.SamModel.from_pretrained(AI_MODEL, { ...o, progress_callback: cb }); AI.device = o.device; break; }
+      catch (e) { err = e; console.warn('AI load ' + o.device + '/' + o.dtype + ': ' + (e && e.message || e)); }
+    }
+    if (!AI.model) throw err || new Error('AIを読み込めませんでした');
+    AI.proc = await T.AutoProcessor.from_pretrained(AI_MODEL, { progress_callback: cb });
+    AI.lib = T;
+  })();
+  try { await AI.loading; } catch (e) { AI.loading = null; AI.model = null; throw e; }
+}
+async function aiEmbed() {
+  if (AI.emb && AI.embFor === SP.ver) return;
+  spHintSet('AIが絵を読み取っています…');
+  const c = mkCanvas(SP.W, SP.H), x = c.getContext('2d');
+  x.fillStyle = '#fff'; x.fillRect(0, 0, SP.W, SP.H); x.drawImage(SP.work, 0, 0);   // 透明部分は白にしてから渡す
+  const img = await AI.lib.RawImage.fromBlob(await toBlob(c));
+  AI.inputs = await AI.proc(img);
+  AI.emb = await AI.model.get_image_embeddings(AI.inputs);
+  AI.embFor = SP.ver;
+}
+async function aiDecode() {
+  const T = AI.lib, [rh, rw] = AI.inputs.reshaped_input_sizes[0], pts = AI.points;
+  const input_points = new T.Tensor('float32', pts.flatMap(p => [p[0] / SP.W * rw, p[1] / SP.H * rh]), [1, 1, pts.length, 2]);
+  const input_labels = new T.Tensor('int64', pts.map(p => BigInt(p[2])), [1, 1, pts.length]);
+  const out = await AI.model({ ...AI.emb, input_points, input_labels });
+  const masks = await AI.proc.post_process_masks(out.pred_masks, AI.inputs.original_sizes, AI.inputs.reshaped_input_sizes);
+  const m = masks[0][0];
+  AI.mdata = m.data; AI.mdims = m.dims; AI.scores = Array.from(out.iou_scores.data);
+  AI.pick = AI.scores.indexOf(Math.max(...AI.scores));
+  aiApply();
+}
+/* 推定した範囲をマスクにする（透明な所は除く） */
+function aiApply() {
+  if (!AI.mdata) return;
+  const [n, H, W] = AI.mdims, off = AI.pick * H * W;
+  SP.mask.fill(0);
+  for (let y = 0; y < SP.H; y++) {
+    const sy = H === SP.H ? y : Math.min(H - 1, Math.floor(y * H / SP.H));
+    for (let x = 0; x < SP.W; x++) {
+      const sx = W === SP.W ? x : Math.min(W - 1, Math.floor(x * W / SP.W)), i = y * SP.W + x;
+      if (AI.mdata[off + sy * W + sx] && spAlpha(i) >= 8) SP.mask[i] = 1;
+    }
+  }
+  SP.mctx.clearRect(0, 0, SP.W, SP.H); spMaskView(0, 0, SP.W - 1, SP.H - 1);
+  $('#spAiSize').textContent = `範囲：${['小', '中', '大'][AI.pick] || AI.pick + 1}`;
+  spDraw();
+}
+async function aiTap(mx, my) {
+  if (mx < 0 || my < 0 || mx >= SP.W || my >= SP.H) return;
+  AI.points.push([mx, my, AI.sign]);
+  if (AI.busy) { AI.pending = true; spDraw(); return; }    // 計算中のタップは、終わってからまとめて反映
+  AI.busy = true; spDraw();
+  try {
+    await aiLoad(); await aiEmbed();
+    do { AI.pending = false; spHintSet('AIが範囲を考えています…'); await aiDecode(); } while (AI.pending);
+    spHintStep();
+  } catch (e) {
+    console.error(e);
+    AI.points = [];
+    spHintStep();
+    const net = /load failed|failed to fetch|networkerror|fetch/i.test(String(e && e.message || e));
+    toast(net
+      ? 'AIのダウンロードができませんでした。\nClaudeアプリ内のプレビューなどでは外部からの読み込みが止められます。GitHub Pagesなどに置いて、Safari／Chromeで開いてください\n（それまでは「塗る」「色で選択」を使えます）'
+      : 'AIを使えませんでした。「塗る」「色で選択」を使ってください\n（' + (e.message || e) + '）', 8000);
+    spSetTool('paint');
+  } finally { AI.busy = false; spDraw(); }
+}
+function aiReset() { AI.points = []; AI.mdata = null; $('#spAiSize').textContent = '範囲：-'; }
+
+/* ---------- 操作 ---------- */
+const spLocal = e => { const r = spCv.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
+const spModel = p => [(p.x - SP.cam.x) / SP.cam.s, (p.y - SP.cam.y) / SP.cam.s];
+spCv.addEventListener('pointerdown', e => {
+  if (!SP.on || SP.steps[SP.cur].remainder) return;
+  spCv.setPointerCapture(e.pointerId);
+  const pt = spLocal(e); SP.ptrs.set(e.pointerId, pt);
+  if (SP.ptrs.size === 1) {
+    SP.hist.push(SP.mask.slice()); if (SP.hist.length > 20) SP.hist.shift();
+    const m = spModel(pt);
+    if (SP.tool === 'ai') { aiTap(Math.floor(m[0]), Math.floor(m[1])); SP.g = null; return; }
+    if (SP.tool === 'wand') {
+      const box = spWand(Math.floor(m[0]), Math.floor(m[1]));
+      if (box) spMaskView(box[0], box[1], box[2], box[3]); else SP.hist.pop();
+      SP.g = null; spDraw(); return;
+    }
+    const box = [Infinity, Infinity, -Infinity, -Infinity], r = SP.size / 2 / SP.cam.s;
+    spStamp(m[0], m[1], r, SP.tool === 'paint' ? 1 : 0, box);
+    SP.g = { type: 'paint', last: m, box, r };
+    SP.cursor = pt; spRefreshBox(box);
+  } else if (SP.ptrs.size === 2) {
+    if (SP.g && SP.g.type === 'paint') { SP.mask = SP.hist.pop() || SP.mask; SP.mctx.clearRect(0, 0, SP.W, SP.H); spMaskView(0, 0, SP.W - 1, SP.H - 1); }
+    const [a, b] = [...SP.ptrs.values()];
+    SP.g = { type: 'pinch', d0: Math.hypot(a.x - b.x, a.y - b.y) || 1, m0: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, cam: { ...SP.cam } };
+    SP.cursor = null; spDraw();
+  }
+});
+function spRefreshBox(box) { if (SP.tool === 'erase') SP.mctx.clearRect(box[0], box[1], box[2] - box[0] + 1, box[3] - box[1] + 1); spMaskView(box[0], box[1], box[2], box[3]); spDraw(); }
+spCv.addEventListener('pointermove', e => {
+  if (!SP.ptrs.has(e.pointerId)) return;
+  const pt = spLocal(e); SP.ptrs.set(e.pointerId, pt);
+  const g = SP.g; if (!g) return;
+  if (g.type === 'pinch' && SP.ptrs.size >= 2) {
+    const [a, b] = [...SP.ptrs.values()];
+    const d = Math.hypot(a.x - b.x, a.y - b.y), m = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+    const s = clamp(g.cam.s * d / g.d0, 0.05, 40), wx = (g.m0.x - g.cam.x) / g.cam.s, wy = (g.m0.y - g.cam.y) / g.cam.s;
+    SP.cam = { s, x: m.x - wx * s, y: m.y - wy * s }; spDraw();
+  } else if (g.type === 'paint') {
+    const m = spModel(pt), box = [Infinity, Infinity, -Infinity, -Infinity];
+    spLine(g.last, m, g.r, SP.tool === 'paint' ? 1 : 0, box); g.last = m;
+    for (let k = 0; k < 2; k++) { g.box[k] = Math.min(g.box[k], box[k]); g.box[k + 2] = Math.max(g.box[k + 2], box[k + 2]); }
+    SP.cursor = pt; spRefreshBox(box);
+  }
+});
+function spEnd(e) {
+  if (!SP.ptrs.has(e.pointerId)) return;
+  SP.ptrs.delete(e.pointerId);
+  const g = SP.g;
+  if (g && g.type === 'paint' && SP.ptrs.size === 0) {
+    if (SP.tool === 'paint' && $('#spSnap').checked) spSnap(g.box, g.r * 0.8);
+    SP.g = null;
+  } else if (g && g.type === 'pinch' && SP.ptrs.size < 2) SP.g = SP.ptrs.size ? { type: 'idle' } : null;
+  SP.cursor = null; spDraw();
+}
+spCv.addEventListener('pointerup', spEnd);
+spCv.addEventListener('pointercancel', spEnd);
+spCv.addEventListener('wheel', e => {
+  if (!SP.on) return; e.preventDefault();
+  const pt = spLocal(e), s = clamp(SP.cam.s * Math.exp(-e.deltaY * 0.0015), 0.05, 40);
+  const wx = (pt.x - SP.cam.x) / SP.cam.s, wy = (pt.y - SP.cam.y) / SP.cam.s;
+  SP.cam = { s, x: pt.x - wx * s, y: pt.y - wy * s }; spDraw();
+}, { passive: false });
+new ResizeObserver(() => { if (SP.on) spDraw(); }).observe(spCv);
+
+$('#spSteps').addEventListener('click', e => {
+  const b = e.target.closest('[data-sp]'); if (!b) return;
+  if (b.dataset.sp === 'add') {
+    const n = prompt('切り出すパーツの名前', ''); if (!n) return;
+    SP.steps.splice(SP.steps.length - 1, 0, { name: n, hint: '好きな範囲', fill: true, opt: true, done: false });
+    spGoto(SP.steps.length - 2); return;
+  }
+  spGoto(+b.dataset.sp);
+});
+document.querySelectorAll('#split [data-tool]').forEach(b => b.onclick = () => spSetTool(b.dataset.tool));
+$('#spSize').addEventListener('input', e => { if (SP.tool === 'wand') SP.tol = +e.target.value; else SP.size = +e.target.value; });
+$('#spShowCut').onchange = spDraw;
+$('#spUndo').onclick = () => {
+  if (!SP.hist.length) return toast('戻せる操作がありません', 1200);
+  SP.mask = SP.hist.pop(); SP.mctx.clearRect(0, 0, SP.W, SP.H); spMaskView(0, 0, SP.W - 1, SP.H - 1);
+  if (SP.tool === 'ai') AI.points.pop();
+  spDraw();
+};
+$('#spClear').onclick = () => { aiReset(); if (!SP.mask.some(v => v)) return; SP.hist.push(SP.mask.slice()); SP.mask.fill(0); SP.mctx.clearRect(0, 0, SP.W, SP.H); spDraw(); };
+$('#spSkip').onclick = () => { SP.mask.fill(0); SP.mctx.clearRect(0, 0, SP.W, SP.H); spNext(); };
+$('#spCut').onclick = spCut;
+$('#spRemName').addEventListener('input', e => SP.remName = e.target.value);
+$('#spDone').onclick = spFinish;
+$('#spDone2').onclick = spFinish;
+$('#spFit').onclick = () => { spFit(); spDraw(); };
+$('#spCancel').onclick = () => { if (SP.cuts.length && !confirm('分けた内容を捨てて閉じますか？')) return; closeSplit(); };
+document.querySelectorAll('#spAiBar [data-ais]').forEach(b => b.onclick = () => { AI.sign = +b.dataset.ais; for (const x of document.querySelectorAll('#spAiBar [data-ais]')) x.classList.toggle('on', x === b); });
+$('#spAiSize').onclick = () => { if (!AI.mdata) return toast('先に絵をタップしてください', 1500); SP.hist.push(SP.mask.slice()); AI.pick = (AI.pick + 1) % AI.mdims[0]; aiApply(); };
+$('#spAiReset').onclick = () => { if (AI.points.length) SP.hist.push(SP.mask.slice()); aiReset(); SP.mask.fill(0); SP.mctx.clearRect(0, 0, SP.W, SP.H); spDraw(); };
+document.querySelectorAll('.tabs [data-tab]').forEach(b => b.onclick = () => showTab(b.dataset.tab));
+$('#sheetClose').onclick = () => openSheet(false);
+$('#sheetBtn').onclick = () => openSheet($('#sheet').classList.contains('hidden'));
+$('#modeView').onclick = () => setMode('view');
+$('#modeMove').onclick = () => setMode('move');
+$('#modeDeform').onclick = () => { setMode('deform'); if (App.doc && !App.sel) toast('変形したいパーツをタップして選んでください'); };
+$('#fitBtn').onclick = fit;
+$('#menuBtn').onclick = e => { e.stopPropagation(); $('#menu').classList.toggle('hidden'); };
+document.addEventListener('click', e => { if (!e.target.closest('#menu')) $('#menu').classList.add('hidden'); });
+const ACTIONS = {
+  open: () => $('#fileIn').click(),
+  openMulti: () => $('#fileInMulti').click(),
+  sample: openSample,
+  saveProj: saveProject,
+  exportPng: exportPNG,
+  split: () => openSplit(),
+  meshAll: () => {
+    if (!App.doc) return toast('まだ何も開いていません');
+    const deformed = App.parts.filter(hasAnyOffs).length;
+    if (deformed && !confirm(`変形済みのパーツ${deformed}個もリセットして作り直しますか？\n（キャンセルすると変形していないパーツだけ作ります）`)) {
+      for (const p of App.parts) if (!hasAnyOffs(p)) { p.mesh = autoMesh(p, p.div); evaluate(p); }
+    } else for (const p of App.parts) { p.mesh = autoMesh(p, p.div); clearAllOffs(p); }
+    App.showMesh = true; commit(); updateProps(); requestRender();
+    toast(`${App.parts.length}パーツにメッシュを作りました`);
+  },
+  close: async () => {
+    if (!App.doc || !confirm('作業を閉じますか？（自動保存も消えます）')) return;
+    resetDoc(); await DB.del('project').catch(() => { });
+    $('#empty').classList.remove('hidden'); $('#docName').textContent = 'ステップ4：揺れとモーション';
+    renderList(); renderParams(); renderPhys(); renderMotion(); updateProps(); updateUndoBtns(); setMode(App.mode); openSheet(false); requestRender();
+  },
+};
+document.querySelectorAll('[data-act]').forEach(b => b.addEventListener('click', () => { $('#menu').classList.add('hidden'); ACTIONS[b.dataset.act](); }));
+const onPick = async e => { const files = [...e.target.files]; e.target.value = ''; if (files.length) await openFiles(files); setMode(App.mode); };
+$('#fileIn').onchange = onPick;
+$('#fileInMulti').onchange = onPick;
+
+initGL();
+setMode('view');
+restoreAutosave().then(() => setMode(App.mode));
+</script>
+</body>
+</html>
