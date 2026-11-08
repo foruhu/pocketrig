@@ -2897,6 +2897,21 @@ function spCut() {
       R[j] = D[k]; Gc[j] = D[k + 1]; B[j] = D[k + 2];
       Wt[j] = !h && D[k + 3] > 200 ? 1 : 0;
     }
+    // 穴のすぐ周りでいちばん多い色（目のまわりなら肌）だけを材料にする。
+    // 近くの髪など別の色まで混ぜると、にごった色になるため
+    {
+      const ring = boxFilter(hole, fw, fh, 6, 1), hist = new Map();
+      for (let j = 0; j < hole.length; j++) if (ring[j] && Wt[j]) { const key = ((R[j] >> 4) << 8) | ((Gc[j] >> 4) << 4) | (B[j] >> 4); hist.set(key, (hist.get(key) || 0) + 1); }
+      let best = -1, bn = 0; for (const [k, v] of hist) if (v > bn) { bn = v; best = k; }
+      if (best >= 0) {
+        let sr = 0, sg = 0, sb = 0, sn = 0;
+        for (let j = 0; j < hole.length; j++) if (ring[j] && Wt[j] && (((R[j] >> 4) << 8) | ((Gc[j] >> 4) << 4) | (B[j] >> 4)) === best) { sr += R[j]; sg += Gc[j]; sb += B[j]; sn++; }
+        const dom = [sr / sn, sg / sn, sb / sn], keep = new Float32Array(Wt.length);
+        let kn = 0;
+        for (let j = 0; j < Wt.length; j++) if (Wt[j] && Math.hypot(R[j] - dom[0], Gc[j] - dom[1], B[j] - dom[2]) < 55) { keep[j] = 1; kn++; }
+        if (kn > 30) Wt.set(keep);
+      }
+    }
     pushPull(R, Gc, B, Wt, fw, fh);
     for (let y = 0; y < fh; y++) for (let x = 0; x < fw; x++) {
       const j = y * fw + x; if (!hole[j]) continue;
@@ -3403,8 +3418,66 @@ async function spAutoAll() {
       if (SP.mask.some(v => v)) spCut();
       await tick();
     }
+    spMergeFragments();
   } finally { loading(false); }
   spFinish();
+}
+/* 切り抜いたあとに残った小さな切れ端（線の切れ端・取り残した色など）を、いちばん近いパーツに入れる。
+   残しておくと、体などを動かしたときにその場に取り残されて目立つため */
+function spMergeFragments() {
+  if (!SP.cuts.length) return;
+  const W = SP.W, H = SP.H, D = SP.data.data, n = W * H, lab = new Int32Array(n), comps = [null];
+  for (let s = 0; s < n; s++) {
+    if (lab[s] || D[s * 4 + 3] < 8) continue;
+    const id = comps.length, px = [s], st = [s]; lab[s] = id;
+    while (st.length) {
+      const i = st.pop(), x = i % W, y = (i / W) | 0;
+      for (const j of [x > 0 ? i - 1 : -1, x < W - 1 ? i + 1 : -1, y > 0 ? i - W : -1, y < H - 1 ? i + W : -1]) {
+        if (j < 0 || lab[j] || D[j * 4 + 3] < 8) continue;
+        lab[j] = id; st.push(j); px.push(j);
+      }
+    }
+    comps.push(px);
+  }
+  const total = comps.reduce((a, c) => a + (c ? c.length : 0), 0);
+  // 残すのは頭のまわり（後ろ髪）だけ。顔より大きく下にある塊は、大きくても体などに入れる
+  const fc = SP.cuts.find(c => c.name === '顔'), yLimit = fc ? fc.y + fc.canvas.height * 1.6 : Infinity;
+  const cyOf = px => px.reduce((a, i) => a + ((i / W) | 0), 0) / px.length;
+  let main = -1;
+  for (let k = 1; k < comps.length; k++) if (cyOf(comps[k]) < yLimit && (main < 0 || comps[k].length > comps[main].length)) main = k;
+  if (main < 0) { main = 1; for (let k = 2; k < comps.length; k++) if (comps[k].length > comps[main].length) main = k; }
+  const add = new Map();                                       // 切り抜きの番号 → 入れる画素
+  for (let k = 1; k < comps.length; k++) {
+    const px = comps[k]; if (k === main || (px.length > total * 0.03 && cyOf(px) < yLimit)) continue;
+    let best = -1, bestScore = -Infinity;
+    const cx = px.reduce((a, i) => a + i % W, 0) / px.length, cy = px.reduce((a, i) => a + ((i / W) | 0), 0) / px.length;
+    SP.cuts.forEach((c, ci) => {
+      const m = 12, x0 = c.x - m, y0 = c.y - m, x1 = c.x + c.canvas.width + m, y1 = c.y + c.canvas.height + m;
+      let inside = 0; for (const i of px) { const x = i % W, y = (i / W) | 0; if (x >= x0 && x <= x1 && y >= y0 && y <= y1) inside++; }
+      const dx = Math.max(0, x0 - cx, cx - x1), dy = Math.max(0, y0 - cy, cy - y1);
+      const score = inside * 1000 - Math.hypot(dx, dy);
+      if (score > bestScore) { bestScore = score; best = ci; }
+    });
+    if (best < 0) continue;
+    if (!add.has(best)) add.set(best, []);
+    for (const i of px) add.get(best).push(i);
+  }
+  for (const [ci, px] of add) {
+    const c = SP.cuts[ci];
+    let x0 = c.x, y0 = c.y, x1 = c.x + c.canvas.width - 1, y1 = c.y + c.canvas.height - 1;
+    for (const i of px) { const x = i % W, y = (i / W) | 0; if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+    const nc = mkCanvas(x1 - x0 + 1, y1 - y0 + 1), ctx = nc.getContext('2d', { willReadFrequently: true });
+    ctx.drawImage(c.canvas, c.x - x0, c.y - y0);
+    const img = ctx.getImageData(0, 0, nc.width, nc.height);
+    for (const i of px) {
+      const x = i % W - x0, y = ((i / W) | 0) - y0, k = (y * nc.width + x) * 4, g = i * 4;
+      img.data[k] = D[g]; img.data[k + 1] = D[g + 1]; img.data[k + 2] = D[g + 2]; img.data[k + 3] = Math.max(img.data[k + 3], D[g + 3]);
+      D[g + 3] = 0;
+    }
+    ctx.putImageData(img, 0, 0);
+    Object.assign(c, { canvas: nc, x: x0, y: y0 });
+  }
+  if (add.size) SP.wctx.putImageData(SP.data, 0, 0);
 }
 
 /* ---------- 操作 ---------- */
