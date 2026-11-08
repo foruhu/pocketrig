@@ -2894,10 +2894,13 @@ async function aiLoad() {
         spHintSet(`AIをダウンロード中… ${Math.round(v.reduce((a, b) => a + b, 0) / v.length)}%（初回のみ）`);
       }
     };
+    // iPhone・iPad はメモリが少なく、WebGPU版や大きい版だとページごと落ちることがあるので、いちばん軽い版だけを使う
+    const ios = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    if (T.env.backends && T.env.backends.onnx && T.env.backends.onnx.wasm) T.env.backends.onnx.wasm.numThreads = 1;
     let gpu = false;
-    try { gpu = !!(navigator.gpu && await navigator.gpu.requestAdapter()); } catch (e) { }
+    if (!ios) { try { gpu = !!(navigator.gpu && await navigator.gpu.requestAdapter()); } catch (e) { } }
     // 速い順に試す：WebGPU(16bit) → WebGPU(32bit) → WebAssembly(軽量版)
-    const tries = gpu ? [{ dtype: 'fp16', device: 'webgpu' }, { dtype: 'fp32', device: 'webgpu' }, { dtype: 'q8', device: 'wasm' }] : [{ dtype: 'q8', device: 'wasm' }, { dtype: 'fp32', device: 'wasm' }];
+    const tries = ios ? [{ dtype: 'q8', device: 'wasm' }] : gpu ? [{ dtype: 'fp16', device: 'webgpu' }, { dtype: 'fp32', device: 'webgpu' }, { dtype: 'q8', device: 'wasm' }] : [{ dtype: 'q8', device: 'wasm' }, { dtype: 'fp32', device: 'wasm' }];
     let err;
     for (const o of tries) {
       try { AI.model = await T.SamModel.from_pretrained(AI_MODEL, { ...o, progress_callback: cb }); AI.device = o.device; break; }
@@ -2912,8 +2915,10 @@ async function aiLoad() {
 async function aiEmbed() {
   if (AI.emb && AI.embFor === SP.ver) return;
   spHintSet('AIが絵を読み取っています…');
-  const c = mkCanvas(SP.W, SP.H), x = c.getContext('2d');
-  x.fillStyle = '#fff'; x.fillRect(0, 0, SP.W, SP.H); x.drawImage(SP.work, 0, 0);   // 透明部分は白にしてから渡す
+  // AIは長い辺1024pxで見るので、先に縮めてから渡す（大きな絵でメモリを使い切らないように）
+  const k = Math.min(1, 1024 / Math.max(SP.W, SP.H)), cw = Math.max(1, Math.round(SP.W * k)), ch = Math.max(1, Math.round(SP.H * k));
+  const c = mkCanvas(cw, ch), x = c.getContext('2d');
+  x.fillStyle = '#fff'; x.fillRect(0, 0, cw, ch); x.drawImage(SP.work, 0, 0, cw, ch);   // 透明部分は白にしてから渡す
   const img = await AI.lib.RawImage.fromBlob(await toBlob(c));
   AI.inputs = await AI.proc(img);
   AI.emb = await AI.model.get_image_embeddings(AI.inputs);
@@ -2924,22 +2929,30 @@ async function aiDecode() {
   const input_points = new T.Tensor('float32', pts.flatMap(p => [p[0] / SP.W * rw, p[1] / SP.H * rh]), [1, 1, pts.length, 2]);
   const input_labels = new T.Tensor('int64', pts.map(p => BigInt(p[2])), [1, 1, pts.length]);
   const out = await AI.model({ ...AI.emb, input_points, input_labels });
-  const masks = await AI.proc.post_process_masks(out.pred_masks, AI.inputs.original_sizes, AI.inputs.reshaped_input_sizes);
-  const m = masks[0][0];
-  AI.mdata = m.data; AI.mdims = m.dims; AI.scores = Array.from(out.iou_scores.data);
+  // 元の大きさに引き伸ばした3枚のマスクを作ると大量のメモリを使うので、
+  // 小さい（256×256の）結果をそのまま持ち、必要な画素だけ読み取る
+  const pm = out.pred_masks, d = pm.dims;
+  const pad = (AI.proc.image_processor && AI.proc.image_processor.pad_size) || { width: 1024, height: 1024 };
+  AI.mdata = pm.data; AI.mdims = [d[d.length - 3], d[d.length - 2], d[d.length - 1]];
+  AI.mmap = { rw, rh, pw: pad.width || 1024, ph: pad.height || 1024 };
+  AI.scores = Array.from(out.iou_scores.data);
   AI.pick = AI.scores.indexOf(Math.max(...AI.scores));
   aiApply();
 }
 /* 推定した範囲をマスクにする（透明な所は除く） */
 function aiApply() {
   if (!AI.mdata) return;
-  const [n, H, W] = AI.mdims, off = AI.pick * H * W;
+  const [n, H, W] = AI.mdims, off = AI.pick * H * W, D = AI.mdata, M = AI.mmap;
+  // 絵の画素 → AIの小さい結果の位置（AIは左上に寄せて正方形に詰めた絵を見ている）
+  const ax = M.rw / M.pw * W / SP.W, ay = M.rh / M.ph * H / SP.H;
   SP.mask.fill(0);
   for (let y = 0; y < SP.H; y++) {
-    const sy = H === SP.H ? y : Math.min(H - 1, Math.floor(y * H / SP.H));
+    const fy = clamp((y + 0.5) * ay - 0.5, 0, H - 1), y0 = Math.floor(fy), y1 = Math.min(H - 1, y0 + 1), ty = fy - y0;
     for (let x = 0; x < SP.W; x++) {
-      const sx = W === SP.W ? x : Math.min(W - 1, Math.floor(x * W / SP.W)), i = y * SP.W + x;
-      if (AI.mdata[off + sy * W + sx] && spAlpha(i) >= 8) SP.mask[i] = 1;
+      const i = y * SP.W + x; if (spAlpha(i) < 8) continue;
+      const fx = clamp((x + 0.5) * ax - 0.5, 0, W - 1), x0 = Math.floor(fx), x1 = Math.min(W - 1, x0 + 1), tx = fx - x0;
+      const v = (D[off + y0 * W + x0] * (1 - tx) + D[off + y0 * W + x1] * tx) * (1 - ty) + (D[off + y1 * W + x0] * (1 - tx) + D[off + y1 * W + x1] * tx) * ty;
+      if (v > 0) SP.mask[i] = 1;            // AIの出力は「0より大きければ範囲内」という値
     }
   }
   SP.mctx.clearRect(0, 0, SP.W, SP.H); spMaskView(0, 0, SP.W - 1, SP.H - 1);
