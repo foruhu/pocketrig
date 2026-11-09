@@ -2380,15 +2380,20 @@ $('#moAuto').onclick = () => {
    パラメータと各キーの形（変形・位置・回転・不透明度）を自動で作る
    ========================================================= */
 const PART_CATS = [
+  // See-through（AIでレイヤー分けするツール）の英語のレイヤー名にも対応する
+  { key: 'headAcc', label: '頭の飾り（帽子・イヤリングなど）', re: /earwear|headwear|帽子|リボン|髪飾り|ヘアピン|イヤリング|ピアス|\bhat\b|ribbon/i },
+  { key: 'headBase', label: '頭全体（下地）', re: /^\s*head\s*$|head.?base|頭全体/i },
+  { key: 'body', label: '体・服', re: /neckwear|topwear|handwear|bottomwear|legwear|footwear|\btail\b|wings|objects/i },
   { key: 'highlight', label: '目のハイライト', re: /ハイライト|highlight|光/i },
-  { key: 'eye', label: '目（白目・瞳・まつ毛など）', re: /白目|黒目|瞳|虹彩|まつ毛|まつげ|睫|まぶた|瞼|目|eye|iris|pupil|lash/i },
   { key: 'brow', label: '眉', re: /眉|まゆ|brow/i },
+  { key: 'iris', label: '瞳', re: /irides|iris|pupil|瞳|黒目|虹彩/i },
+  { key: 'eye', label: '目（白目・まつ毛など）', re: /白目|まつ毛|まつげ|睫|まぶた|瞼|目|eye|lash|sclera/i },
   { key: 'mouth', label: '口', re: /口|歯|舌|唇|mouth|teeth|tongue|lip/i },
   { key: 'nose', label: '鼻', re: /鼻|nose/i },
   { key: 'cheek', label: '頬', re: /頬|ほほ|チーク|赤面|cheek|blush/i },
-  { key: 'ear', label: '耳', re: /耳|ear/i },
+  { key: 'ear', label: '耳', re: /耳|\bears?\b/i },
   { key: 'ahoge', label: 'アホ毛', re: /アホ毛|あほ毛|ahoge/i },
-  { key: 'hairFront', label: '前髪', re: /前髪|bang|fringe/i },
+  { key: 'hairFront', label: '前髪', re: /前髪|bang|fringe|front.?hair/i },
   { key: 'hairSide', label: '横髪・その他の髪', re: /横髪|サイド|もみあげ|触角|side.?hair/i },
   { key: 'hairBack', label: '後ろ髪', re: /後ろ髪|後髪|うしろ髪|back.?hair|ポニ|ツイン|おさげ|三つ編/i },
   { key: 'hairSide', label: '横髪・その他の髪', re: /髪|hair/i },
@@ -2398,7 +2403,9 @@ const PART_CATS = [
   { key: 'body', label: '体・服', re: /体|胴|服|腕|手|胸|肩|スカート|袖|body|arm|hand|cloth|torso/i },
 ];
 const CAT_LIST = [...new Map(PART_CATS.map(c => [c.key, c.label])).entries()];
-const HEAD_CATS = new Set(['highlight', 'eye', 'brow', 'mouth', 'nose', 'cheek', 'ear', 'ahoge', 'hairFront', 'hairSide', 'hairBack', 'face']);
+const HEAD_CATS = new Set(['highlight', 'eye', 'iris', 'brow', 'mouth', 'nose', 'cheek', 'ear', 'ahoge', 'hairFront', 'hairSide', 'hairBack', 'face', 'headAcc', 'headBase']);
+/* 奥行きの動きを決めるときは、似たパーツと同じに扱う */
+const depthCat = c => c === 'iris' ? 'eye' : c === 'headBase' ? 'face' : c === 'headAcc' ? 'hairFront' : c;
 const HAIR_CATS = new Set(['ahoge', 'hairFront', 'hairSide', 'hairBack']);
 function guessCat(p) {
   const tries = [p.name, ...String(p.group || '').split('/').map(s => s.trim()).reverse()];
@@ -2430,11 +2437,23 @@ const KF = (o = {}) => ({ x: 0, y: 0, rot: 0, scale: 0, opacity: 0, offs: null, 
 function needMesh(p) { if (vcount(p) === 4 && !hasAnyOffs(p)) { p.mesh = autoMesh(p, p.div); } }
 
 /* どのパラメータを作れるかを、パーツの役割から決める */
+/* パーツの絵のうち、顔の中心より左（L）か右（R）にある部分の範囲（キャンバス上） */
+function sideBox(p, side, cx) {
+  const ox = p.left + p.base.x, oy = p.top + p.base.y, A = p.alpha;
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity, n = 0;
+  for (let y = 0; y < p.h; y++) for (let x = 0; x < p.w; x++) {
+    if (A[y * p.w + x] < 40) continue;
+    const X = ox + x; if ((side === 'L') !== (X < cx)) continue;
+    n++; if (X < x0) x0 = X; if (X > x1) x1 = X; if (oy + y < y0) y0 = oy + y; if (oy + y > y1) y1 = oy + y;
+  }
+  return n < 12 ? null : { x0, y0, x1, y1, w: x1 - x0 + 1, h: y1 - y0 + 1 };
+}
 function rigPlan(cats) {
   const by = k => App.parts.filter(p => cats.get(p.id) === k);
-  const eyes = [...by('eye'), ...by('highlight')], brows = by('brow');
+  const eyes = [...by('eye'), ...by('iris'), ...by('highlight')], brows = by('brow');
   const faceB = unionBox(by('face')) || unionBox([...eyes, ...by('mouth')]) || { cx: App.doc.w / 2, cy: App.doc.h / 2, w: App.doc.w * 0.35, h: App.doc.h * 0.3, x0: 0, y0: 0, x1: App.doc.w, y1: App.doc.h };
-  const sides = new Set(eyes.map(p => sideOf(p, faceB.cx)));
+  // 左右の目が1枚のレイヤーに入っていても、顔の中心の左右それぞれに絵があれば両目とみなす
+  const sides = new Set(['L', 'R'].filter(sd => eyes.some(p => sideBox(p, sd, faceB.cx))));
   const head = App.parts.filter(p => HEAD_CATS.has(cats.get(p.id)));
   const body = [...by('body'), ...by('neck'), ...by('neckShadow')], hair = App.parts.filter(p => HAIR_CATS.has(cats.get(p.id)));
   const plan = [];
@@ -2447,7 +2466,7 @@ function rigPlan(cats) {
   if (head.length) plan.push({ id: 'angX', name: '顔の向き 左右', sub: '顔のパーツを奥行きに合わせてずらす' }, { id: 'angY', name: '顔の向き 上下' }, { id: 'angZ', name: '顔の傾き', sub: '首の付け根を軸に頭を傾ける' });
   if (body.length) plan.push({ id: 'bodyX', name: '体の向き 左右' }, { id: 'breath', name: '呼吸', sub: '体がわずかに上下する' });
   if (hair.length) plan.push({ id: 'sway', name: '髪揺れ（左・中・右）', sub: '髪を3つの帯に分けて、それぞれ少しずつ違う揺れ方をさせる。顔の向きに合わせて自動で揺れる' });
-  return { plan, faceB, eyes, brows, by, head, body, hair, neckShadow: by('neckShadow') };
+  return { plan, faceB, eyes, brows, by, head, body, hair, neckShadow: by('neckShadow'), iris: by('iris') };
 }
 function showRigDialog() {
   if (!App.doc) return toast('まだ何も開いていません');
@@ -2503,29 +2522,39 @@ function autoRig(cats, want, opts = {}) {
   const clearOld = q => { for (const p of App.parts) if (p.binds[q.id]) { const nb = { ...p.binds }; delete nb[q.id]; p.binds = nb; } };
 
   // ---- 目の開閉：目の範囲の少し下へ縦につぶす ----
-  const blink = (q, eyes, brows) => {
+  // 左右の目が1枚のレイヤーに入っていても、顔の中心のどちら側にある頂点かで分けて動かす
+  const cxF = faceB.cx, onSide = (x, sd) => !sd || (sd === 'L' ? x < cxF : x >= cxF);
+  const boxOf = (parts, sd) => {
+    const bs = parts.map(p => sd ? sideBox(p, sd, cxF) : partBox(p)).filter(Boolean);
+    if (!bs.length) return null;
+    const b = { x0: Math.min(...bs.map(v => v.x0)), y0: Math.min(...bs.map(v => v.y0)), x1: Math.max(...bs.map(v => v.x1)), y1: Math.max(...bs.map(v => v.y1)) };
+    b.w = b.x1 - b.x0 + 1; b.h = b.y1 - b.y0 + 1; return b;
+  };
+  const onlyOn = (p, sd) => !sd || !sideBox(p, sd === 'L' ? 'R' : 'L', cxF);
+  const blink = (q, sd) => {
     clearOld(q);
-    const b = unionBox(eyes); if (!b) return;
+    const eyes = R.eyes.filter(p => !sd || sideBox(p, sd, cxF)), b = boxOf(eyes, sd); if (!b) return;
     const yc = b.y0 + b.h * 0.62;
     for (const p of eyes) {
-      const k = { offs: offsBy(p, (x, y) => [0, (yc - y) * 0.92]) };
-      if (cat(p) === 'highlight') k.opacity = -1;
+      needMesh(p);
+      const k = { offs: offsBy(p, (x, y) => onSide(x, sd) ? [0, (yc - y) * 0.92] : [0, 0]) };
+      if (cat(p) === 'highlight' && onlyOn(p, sd)) k.opacity = -1;
       bindKeys(p, q, { 0: KF(k) });
     }
-    for (const p of brows) bindKeys(p, q, { 0: KF({ y: b.h * 0.12 }) });
+    for (const p of R.brows.filter(p => !sd || sideBox(p, sd, cxF))) {
+      if (onlyOn(p, sd)) bindKeys(p, q, { 0: KF({ y: b.h * 0.12 }) });
+      else { needMesh(p); bindKeys(p, q, { 0: KF({ offs: offsBy(p, (x) => onSide(x, sd) ? [0, b.h * 0.12] : [0, 0]) }) }); }
+    }
     made.push(q.name);
   };
-  if (want.has('eyeL') || want.has('eyeR')) {
-    for (const [id, side, name] of [['eyeL', 'L', '左目の開閉'], ['eyeR', 'R', '右目の開閉']]) {
-      if (!want.has(id)) continue;
-      blink(ensureParam(name, 0, 1, 1), R.eyes.filter(p => sideOf(p, faceB.cx) === side), R.brows.filter(p => sideOf(p, faceB.cx) === side));
-    }
-  }
-  if (want.has('eyes')) blink(ensureParam('目の開閉', 0, 1, 1), R.eyes, R.brows);
+  if (want.has('eyeL')) blink(ensureParam('左目の開閉', 0, 1, 1), 'L');
+  if (want.has('eyeR')) blink(ensureParam('右目の開閉', 0, 1, 1), 'R');
+  if (want.has('eyes')) blink(ensureParam('目の開閉', 0, 1, 1), null);
 
-  // ---- 目玉：目のふちからの距離に応じて動かす（ふちは止まり、真ん中ほど大きく動く） ----
+  // ---- 目玉（視線） ----
+  //   瞳が別のパーツなら、瞳だけを動かす（白目やまつ毛はそのまま）。
+  //   瞳が分かれていなければ、目のふちからの距離に応じて動かす（ふちは止まり、真ん中ほど大きく動く）
   const eyeWeights = p => {
-    // パーツの不透明な所の中で、ふちからの距離（簡易な距離変換）
     const w = p.w, h = p.h, A = p.alpha, d = new Float32Array(w * h), INF = 1e9;
     for (let i = 0; i < w * h; i++) d[i] = A[i] > 20 ? INF : 0;
     for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const i = y * w + x; if (!d[i]) continue; d[i] = Math.min(d[i], (x ? d[i - 1] : 0) + 1, (y ? d[i - w] : 0) + 1); }
@@ -2535,23 +2564,42 @@ function autoRig(cats, want, opts = {}) {
     for (let k = 0; k < out.length; k++) { const x = clamp(Math.round(V[2 * k]), 0, w - 1), y = clamp(Math.round(V[2 * k + 1]), 0, h - 1); out[k] = Math.pow(clamp(d[y * w + x] / (mx * 0.85), 0, 1), 1.4); }
     return out;
   };
-  const eyeParts = [...R.eyes].filter(p => cat(p) === 'eye' || cat(p) === 'highlight');
+  const eyeParts = R.eyes.filter(p => cat(p) === 'eye' || cat(p) === 'highlight' || cat(p) === 'iris');
+  const sidesEye = ['L', 'R'].map(sd => boxOf(eyeParts, sd)).filter(Boolean);
+  const eyeW = sidesEye.length ? sidesEye.reduce((a, b) => a + b.w, 0) / sidesEye.length : fw * 0.2;
+  const eyeH = sidesEye.length ? sidesEye.reduce((a, b) => a + b.h, 0) / sidesEye.length : fh * 0.1;
   if (want.has('gaze') && eyeParts.length) {
     const qx = ensureParam('目玉 左右', -1, 1, 0), qy = ensureParam('目玉 上下', -1, 1, 0); clearOld(qx); clearOld(qy);
-    for (const p of eyeParts) {
-      if (vcount(p) <= 4) { p.mesh = autoMesh(p, 14); evaluate(p); }
-      const wt = eyeWeights(p), ax = p.w * 0.1, ay = p.h * 0.07;
-      const mk = (sx, sy) => { const o = new Float32Array(wt.length * 2); for (let k = 0; k < wt.length; k++) { o[2 * k] = sx * ax * wt[k]; o[2 * k + 1] = sy * ay * wt[k]; } return KF({ offs: o }); };
-      bindKeys(p, qx, { 1: mk(1, 0), '-1': mk(-1, 0) });
-      bindKeys(p, qy, { 1: mk(0, -1), '-1': mk(0, 1) });
+    if (R.iris.length) {
+      for (const p of R.iris) {
+        bindKeys(p, qx, { 1: KF({ x: eyeW * 0.12 }), '-1': KF({ x: -eyeW * 0.12 }) });
+        bindKeys(p, qy, { 1: KF({ y: -eyeH * 0.09 }), '-1': KF({ y: eyeH * 0.09 }) });
+      }
+      for (const p of R.eyes.filter(p => cat(p) === 'highlight')) {   // ハイライトも瞳と一緒に
+        bindKeys(p, qx, { 1: KF({ x: eyeW * 0.12 }), '-1': KF({ x: -eyeW * 0.12 }) });
+        bindKeys(p, qy, { 1: KF({ y: -eyeH * 0.09 }), '-1': KF({ y: eyeH * 0.09 }) });
+      }
+    } else {
+      for (const p of eyeParts) {
+        if (vcount(p) <= 4) { p.mesh = autoMesh(p, 14); evaluate(p); }
+        const wt = eyeWeights(p), ax = Math.min(p.w, eyeW) * 0.1, ay = Math.min(p.h, eyeH) * 0.07;
+        const mk = (sx, sy) => { const o = new Float32Array(wt.length * 2); for (let k = 0; k < wt.length; k++) { o[2 * k] = sx * ax * wt[k]; o[2 * k + 1] = sy * ay * wt[k]; } return KF({ offs: o }); };
+        bindKeys(p, qx, { 1: mk(1, 0), '-1': mk(-1, 0) });
+        bindKeys(p, qy, { 1: mk(0, -1), '-1': mk(0, 1) });
+      }
     }
     made.push(qx.name, qy.name);
   }
-  // ---- 目の笑顔：下半分を持ち上げ、真ん中ほど高く（弓なりに） ----
+  // ---- 目の笑顔：下半分を持ち上げ、真ん中ほど高く（弓なりに）。左右の目それぞれの範囲で計算する ----
   if (want.has('smile') && eyeParts.length) {
     const q = ensureParam('目の笑顔', 0, 1, 0); clearOld(q);
+    const bxL = boxOf(eyeParts, 'L'), bxR = boxOf(eyeParts, 'R'), bxA = boxOf(eyeParts, null);
     for (const p of eyeParts) {
-      const k = { offs: offsBy(p, (x, y, u, v) => [0, -Math.max(0, v - 0.35) / 0.65 * p.h * 0.45 * (0.6 + 0.4 * Math.sin(Math.PI * clamp(u, 0, 1)))]) };
+      needMesh(p);
+      const k = { offs: offsBy(p, (x, y) => {
+        const b = (x < cxF ? bxL : bxR) || bxA, u = clamp((x - b.x0) / b.w, 0, 1), v = (y - b.y0) / b.h;
+        return [0, -Math.max(0, v - 0.35) / 0.65 * b.h * 0.45 * (0.6 + 0.4 * Math.sin(Math.PI * u))];
+      }) };
       if (cat(p) === 'highlight') k.opacity = -0.6;
       bindKeys(p, q, { 1: KF(k) });
     }
@@ -2581,7 +2629,7 @@ function autoRig(cats, want, opts = {}) {
   if (want.has('angX')) {
     const q = ensureParam('顔の向き 左右', -30, 30, 0); clearOld(q);
     for (const p of R.head) {
-      const c = cat(p), d = (DEPTH_X[c] || 0) * fw, bl = (BULGE[c] || 0) * fw;
+      const c = depthCat(cat(p)), d = (DEPTH_X[c] || 0) * fw, bl = (BULGE[c] || 0) * fw;
       const mk = unified
         ? s => KF({ x: s * fw * 0.015, offs: offsBy(p, (x) => [roundX(x, s, fw * 0.05), 0]) })
         : s => bl ? KF({ x: s * d, offs: offsBy(p, (x) => { const u = clamp((x - faceB.cx) / (fw / 2), -1.2, 1.2); return [s * bl * Math.max(0, 1 - u * u), 0]; }) }) : KF({ x: s * d });
@@ -2595,7 +2643,7 @@ function autoRig(cats, want, opts = {}) {
     const q = ensureParam('顔の向き 上下', -30, 30, 0); clearOld(q);
     const DY = { eye: -0.05, highlight: -0.055, brow: -0.06, mouth: -0.045, nose: -0.06, cheek: -0.04, ear: -0.008, ahoge: -0.02, hairFront: -0.03, hairSide: 0, hairBack: 0.03, face: -0.008 };
     for (const p of R.head) {
-      const c = cat(p), d = (DY[c] || 0) * fh, bl = (BULGE[c] || 0) * fh * -0.8;
+      const c = depthCat(cat(p)), d = (DY[c] || 0) * fh, bl = (BULGE[c] || 0) * fh * -0.8;
       const mk = unified
         ? s => KF({ y: -s * fh * 0.01, offs: offsBy(p, (x, y) => [0, roundY(y, -s, fh * 0.035)]) })
         : s => bl ? KF({ y: s * d, offs: offsBy(p, (x, y) => { const u = clamp((y - faceB.cy) / (fh / 2), -1.2, 1.2); return [0, s * bl * Math.max(0, 1 - u * u)]; }) }) : KF({ y: s * d });
