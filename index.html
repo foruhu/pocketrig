@@ -229,6 +229,7 @@ nav.bottom > button{min-width:52px;padding:0 10px}
         <div class="rigbar"><button id="autoRig" class="auto">✨ パラメータをおまかせで作る</button></div>
         <div id="paramList"></div>
         <div class="btnrow pad"><button id="addParam">＋ 追加</button><button id="playParams">▶ 動かす</button><button id="resetParams">初期値に</button></div>
+        <label class="chk pad" style="margin:0 10px"><input type="checkbox" id="linkLR" checked>左右の目を連動させる（片方を動かすと、もう片方も同じように動く）</label>
         <div class="sect pad2">揺れ（物理演算）<button id="physOn" class="sm on">ON</button></div>
         <div id="physList"></div>
         <div class="btnrow pad"><button id="addPhys">＋ 揺れを追加</button></div>
@@ -805,6 +806,7 @@ async function setDoc(doc, defs, opts = {}) {
   App.motions = (opts.motions || []).map(m => ({ ...m, tracks: { ...m.tracks } }));
   App.nextMotionId = 1 + Math.max(0, ...App.motions.map(m => m.id));
   App.roleMap = { ...(opts.roleMap || {}) };
+  App.linkLR = opts.linkLR !== false; $('#linkLR').checked = App.linkLR;
   App.curMotion = App.motions.some(m => m.id === opts.curMotion) ? opts.curMotion : (App.motions[0] ? App.motions[0].id : null);
   for (let i = 0; i < defs.length; i++) {
     const p = makePart(defs[i]);
@@ -1363,7 +1365,7 @@ const DB = {
   get(k) { return this.run('readonly', s => s.get(k)); },
   del(k) { return this.run('readwrite', s => s.delete(k)); },
 };
-const rigData = () => ({ physics: App.physics, physOn: App.physOn, motions: App.motions, curMotion: App.curMotion, roleMap: App.roleMap });
+const rigData = () => ({ physics: App.physics, physOn: App.physOn, motions: App.motions, curMotion: App.curMotion, roleMap: App.roleMap, linkLR: App.linkLR });
 const paramsData = () => App.params.map(({ id, name, min, max, def, value }) => ({ id, name, min, max, def, value }));
 const toBlob = c => new Promise(r => c.toBlob(r, 'image/png'));
 /* メッシュを保存用の形にする（json は通常の配列、自動保存は型付き配列のまま） */
@@ -1623,6 +1625,16 @@ const PRESETS = [
   { name: '目の笑顔', min: 0, max: 1, def: 0, sub: '0〜1' },
   { name: '顔の傾き', min: -15, max: 15, def: 0, sub: '-15〜15' },
 ];
+/* 左右のペア（「左目の開閉」と「右目の開閉」など） */
+const pairKey = q => q.name.replace(/左|右/g, '').replace(/\s+/g, '');
+function partnerOf(q) {
+  if (!/左|右/.test(q.name)) return null;
+  const sw = q.name.replace(/左|右/g, c => c === '左' ? '右' : '左');
+  return App.params.find(x => x !== q && x.name === sw) || null;
+}
+App.linkLR = true;   // 左右のペアを連動させる
+const linkedPartner = q => App.linkLR && /目/.test(q.name) && !/目玉/.test(q.name) ? partnerOf(q) : null;
+const mapTo = (a, b) => b.min + (a.value - a.min) / ((a.max - a.min) || 1) * (b.max - b.min);
 function addParam(def) {
   let name = def.name, n = 2;
   while (App.params.some(q => q.name === name)) name = `${def.name} ${n++}`;
@@ -1691,7 +1703,9 @@ $('#paramList').addEventListener('input', e => {
   const q = App.params.find(q => q.id === id); let v = +e.target.value;
   const thr = (q.max - q.min) * 0.03;                     // キーの近くは吸い付く
   for (const k of paramKeys(q)) if (Math.abs(k - v) < thr) { v = k; break; }
-  q.value = v; refreshParamUI(q); evaluateAll(); updateProps(true); setMode(App.mode);
+  q.value = v; refreshParamUI(q);
+  const pt = linkedPartner(q); if (pt) { pt.value = mapTo(q, pt); refreshParamUI(pt); }
+  evaluateAll(); updateProps(true); setMode(App.mode);
 });
 $('#paramList').addEventListener('change', e => { if (e.target.dataset.slide) { const q = App.params.find(q => q.id === +e.target.dataset.slide); e.target.value = q.value; scheduleSave(); } });
 $('#paramList').addEventListener('click', e => {
@@ -1739,6 +1753,7 @@ function delKey(q, key, parts) {
   commit(); evaluateAll(); renderParams(); renderList(); updateProps(); setMode(App.mode);
   toast('キーを削除しました（元に戻せます）');
 }
+$('#linkLR').onchange = e => { App.linkLR = e.target.checked; scheduleSave(); };
 $('#resetParams').onclick = () => {
   stopPlay(); for (const q of App.params) q.value = q.def;
   evaluateAll(); renderParams(); updateProps(); setMode(App.mode); scheduleSave();
@@ -1761,9 +1776,17 @@ $('#playParams').onclick = () => {
   const t0 = performance.now();
   const loop = now => {
     const t = (now - t0) / 1000;
-    App.params.forEach((q, i) => {
-      const mid = (q.min + q.max) / 2, amp = (q.max - q.min) / 2, period = 2.2 + i * 0.45;
-      q.value = mid + amp * Math.sin(t * Math.PI * 2 / period + i * 1.3);
+    const groups = [];
+    App.params.forEach(q => {
+      const g = pairKey(q); let i = groups.indexOf(g); if (i < 0) { groups.push(g); i = groups.length - 1; }   // 左右のペアは同じ動き
+      if (/開閉/.test(q.name) && /目/.test(q.name) && q.def === q.max) {
+        // まばたき：ふだんは開いていて、約3秒ごとに素早く閉じる（左右とも同じタイミング）
+        const ph = t % 3.1, c = ph < 0.08 ? ph / 0.08 : ph < 0.13 ? 1 : ph < 0.25 ? 1 - (ph - 0.13) / 0.12 : 0;
+        q.value = q.max - (q.max - q.min) * c;
+      } else {
+        const mid = (q.min + q.max) / 2, amp = (q.max - q.min) / 2, period = 2.2 + i * 0.45;
+        q.value = mid + amp * Math.sin(t * Math.PI * 2 / period + i * 1.3);
+      }
       const pv = $('#pv' + q.id); if (pv) pv.textContent = fmtV(q.value);
       const sl = document.querySelector(`[data-slide="${q.id}"]`); if (sl) sl.value = q.value;
     });
@@ -2089,21 +2112,28 @@ $('#moDelKey').onclick = () => {
 $('#moScrub').addEventListener('input', e => { if (MO.playing) stopMotion(); MO.t = +e.target.value; applyMotion(MO.t); evaluateAll(); liveParamUI(); });
 $('#moScrub').addEventListener('change', () => scheduleSave());
 const moRows = $('#moRows');
+const touchIds = id => { const q = App.params.find(q => q.id === id), pt = q && linkedPartner(q); return pt ? [id, pt.id] : [id]; };
 moRows.addEventListener('pointerdown', e => {
   const id = +(e.target.dataset && e.target.dataset.mslide); if (!id) return;
-  MO.touched.set(id, { samples: [] });
-  e.target.closest('.mrow').classList.add('touch');
-  if (MO.rec) { const q = App.params.find(q => q.id === id); MO.touched.get(id).samples.push([MO.t, q.value]); }
+  for (const k of touchIds(id)) {
+    MO.touched.set(k, { samples: [] });
+    const row = document.querySelector(`.mrow[data-mid="${k}"]`); if (row) row.classList.add('touch');
+    if (MO.rec) { const q = App.params.find(q => q.id === k); MO.touched.get(k).samples.push([MO.t, q.value]); }
+  }
 });
 moRows.addEventListener('input', e => {
   const id = +(e.target.dataset && e.target.dataset.mslide); if (!id) return;
   const q = App.params.find(q => q.id === id); q.value = +e.target.value;
-  if (!MO.touched.has(id)) MO.touched.set(id, { samples: [] });
+  const pt = linkedPartner(q); if (pt) pt.value = mapTo(q, pt);   // 左右の目などは一緒に動かして、一緒に記録する
+  for (const k of touchIds(id)) if (!MO.touched.has(k)) MO.touched.set(k, { samples: [] });
   evaluateAll(); liveParamUI();
 });
 const endMTouch = e => {
   const id = +(e.target.dataset && e.target.dataset.mslide); if (!id || !MO.touched.has(id)) return;
-  if (MO.rec) finishTouch(id); else { MO.touched.delete(id); e.target.closest('.mrow').classList.remove('touch'); }
+  for (const k of touchIds(id)) {
+    if (!MO.touched.has(k)) continue;
+    if (MO.rec) finishTouch(k); else { MO.touched.delete(k); const row = document.querySelector(`.mrow[data-mid="${k}"]`); if (row) row.classList.remove('touch'); }
+  }
 };
 moRows.addEventListener('pointerup', endMTouch);
 moRows.addEventListener('pointercancel', endMTouch);
