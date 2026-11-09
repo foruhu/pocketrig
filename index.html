@@ -2363,6 +2363,7 @@ const PART_CATS = [
   { key: 'hairBack', label: '後ろ髪', re: /後ろ髪|後髪|うしろ髪|back.?hair|ポニ|ツイン|おさげ|三つ編/i },
   { key: 'hairSide', label: '横髪・その他の髪', re: /髪|hair/i },
   { key: 'face', label: '顔（輪郭・肌）', re: /顔|輪郭|肌|face|head|skin/i },
+  { key: 'neckShadow', label: '首の影', re: /首.*影|影.*首|neck.?shadow/i },
   { key: 'neck', label: '首', re: /首|neck/i },
   { key: 'body', label: '体・服', re: /体|胴|服|腕|手|胸|肩|スカート|袖|body|arm|hand|cloth|torso/i },
 ];
@@ -2405,7 +2406,7 @@ function rigPlan(cats) {
   const faceB = unionBox(by('face')) || unionBox([...eyes, ...by('mouth')]) || { cx: App.doc.w / 2, cy: App.doc.h / 2, w: App.doc.w * 0.35, h: App.doc.h * 0.3, x0: 0, y0: 0, x1: App.doc.w, y1: App.doc.h };
   const sides = new Set(eyes.map(p => sideOf(p, faceB.cx)));
   const head = App.parts.filter(p => HEAD_CATS.has(cats.get(p.id)));
-  const body = [...by('body'), ...by('neck')], hair = App.parts.filter(p => HAIR_CATS.has(cats.get(p.id)));
+  const body = [...by('body'), ...by('neck'), ...by('neckShadow')], hair = App.parts.filter(p => HAIR_CATS.has(cats.get(p.id)));
   const plan = [];
   if (eyes.length) {
     if (sides.size === 2) plan.push({ id: 'eyeL', name: '左目の開閉', sub: '画面の左側の目' }, { id: 'eyeR', name: '右目の開閉', sub: '画面の右側の目' });
@@ -2415,8 +2416,8 @@ function rigPlan(cats) {
   if (by('mouth').length) plan.push({ id: 'mouth', name: '口の開閉', sub: '口を縦に開く' });
   if (head.length) plan.push({ id: 'angX', name: '顔の向き 左右', sub: '顔のパーツを奥行きに合わせてずらす' }, { id: 'angY', name: '顔の向き 上下' }, { id: 'angZ', name: '顔の傾き', sub: '首の付け根を軸に頭を傾ける' });
   if (body.length) plan.push({ id: 'bodyX', name: '体の向き 左右' }, { id: 'breath', name: '呼吸', sub: '体がわずかに上下する' });
-  if (hair.length) plan.push({ id: 'sway', name: '髪揺れ', sub: '顔の向きに合わせて自動で揺れる設定も作る' });
-  return { plan, faceB, eyes, brows, by, head, body, hair };
+  if (hair.length) plan.push({ id: 'sway', name: '髪揺れ（左・中・右）', sub: '髪を3つの帯に分けて、それぞれ少しずつ違う揺れ方をさせる。顔の向きに合わせて自動で揺れる' });
+  return { plan, faceB, eyes, brows, by, head, body, hair, neckShadow: by('neckShadow') };
 }
 function showRigDialog() {
   if (!App.doc) return toast('まだ何も開いていません');
@@ -2556,6 +2557,8 @@ function autoRig(cats, want, opts = {}) {
         : s => bl ? KF({ x: s * d, offs: offsBy(p, (x) => { const u = clamp((x - faceB.cx) / (fw / 2), -1.2, 1.2); return [s * bl * Math.max(0, 1 - u * u), 0]; }) }) : KF({ x: s * d });
       bindKeys(p, q, { 30: mk(1), '-30': mk(-1) });
     }
+    // 首の影は、あごの動きについていく（首の上で影がずれて、顔が回ったように見える）
+    for (const p of R.neckShadow) bindKeys(p, q, { 30: KF({ x: fw * 0.04 }), '-30': KF({ x: -fw * 0.04 }) });
     made.push(q.name);
   }
   if (want.has('angY')) {
@@ -2567,6 +2570,12 @@ function autoRig(cats, want, opts = {}) {
         ? s => KF({ y: -s * fh * 0.01, offs: offsBy(p, (x, y) => [0, roundY(y, -s, fh * 0.035)]) })
         : s => bl ? KF({ y: s * d, offs: offsBy(p, (x, y) => { const u = clamp((y - faceB.cy) / (fh / 2), -1.2, 1.2); return [0, s * bl * Math.max(0, 1 - u * u)]; }) }) : KF({ y: s * d });
       bindKeys(p, q, { 30: mk(1), '-30': mk(-1) });
+    }
+    // 上を向くと首の影は小さく（上へ縮む）、下を向くと大きくなる
+    for (const p of R.neckShadow) {
+      needMesh(p);
+      const mk = (s, k, op) => KF({ opacity: op, offs: offsBy(p, (x, y, u, v) => [0, -s * clamp(v, 0, 1) * p.h * k]) });
+      bindKeys(p, q, { 30: mk(1, 0.4, -0.25), '-30': mk(-1, 0.15, 0) });
     }
     made.push(q.name);
   }
@@ -2605,21 +2614,29 @@ function autoRig(cats, want, opts = {}) {
     made.push(q.name);
   }
 
-  // ---- 髪揺れ：毛先ほど大きく横に。アホ毛は回転。揺れ（物理）も作る ----
+  // ---- 髪揺れ：髪を左・中・右の帯に分け、帯ごとに長さの違う揺れを付ける（束ごとにばらばらに揺れて見える） ----
   if (want.has('sway')) {
-    const q = ensureParam('髪揺れ', -1, 1, 0); clearOld(q);
-    for (const p of R.hair) {
-      if (cat(p) === 'ahoge') { bindKeys(p, q, { 1: KF({ rot: 18 }), '-1': KF({ rot: -18 }) }); continue; }
-      const amt = p.h * (cat(p) === 'hairFront' ? 0.06 : 0.12);
-      const o = offsBy(p, (x, y, u, v) => [Math.pow(v, 1.6) * amt, 0]);
-      bindKeys(p, q, { 1: KF({ offs: o }), '-1': KF({ offs: o.map(v => -v) }) });
-    }
-    const inp = App.params.find(x => x.name === '顔の向き 左右') || App.params.find(x => /向き/.test(x.name) && x.id !== q.id);
-    if (inp && !App.physics.some(g => g.out === q.id)) {
-      App.physics = [...App.physics, { id: App.nextPhysId++, name: '髪の揺れ', inp: inp.id, out: q.id, len: 0.55, damp: 3, str: 1, inv: false }];
-      App.physOn = true;
-    }
-    made.push(q.name);
+    // 以前の1本だけの「髪揺れ」は、作り直すときに取り除く
+    const old = App.params.find(x => x.name === '髪揺れ');
+    if (old) { clearOld(old); App.params = App.params.filter(x => x !== old); App.physics = App.physics.filter(g => g.out !== old.id && g.inp !== old.id); }
+    const hb = unionBox(R.hair), BAND = [['左', 0.5, 2.8, 1.0], ['中', 0.62, 2.4, 1.1], ['右', 0.45, 3.3, 0.9]];
+    const centers = BAND.map((_, k) => hb.x0 + hb.w * (k + 0.5) / BAND.length), sig = hb.w / BAND.length * 0.6;
+    const wOf = x => { const g = centers.map(c => Math.exp(-((x - c) ** 2) / (2 * sig * sig))), t = g.reduce((a, b) => a + b, 0) || 1; return g.map(v => v / t); };
+    const inp = App.params.find(x => x.name === '顔の向き 左右') || App.params.find(x => /向き/.test(x.name));
+    BAND.forEach(([nm, len, damp, str], k) => {
+      const q = ensureParam('髪揺れ ' + nm, -1, 1, 0); clearOld(q);
+      for (const p of R.hair) {
+        if (cat(p) === 'ahoge') { if (nm === '中') bindKeys(p, q, { 1: KF({ rot: 18 }), '-1': KF({ rot: -18 }) }); continue; }
+        const amt = p.h * (cat(p) === 'hairFront' ? 0.06 : 0.12);
+        const o = offsBy(p, (x, y, u, v) => [Math.pow(clamp(v, 0, 1), 1.6) * amt * wOf(x)[k], 0]);
+        bindKeys(p, q, { 1: KF({ offs: o }), '-1': KF({ offs: o.map(v => -v) }) });
+      }
+      if (inp && !App.physics.some(g => g.out === q.id)) {
+        App.physics = [...App.physics, { id: App.nextPhysId++, name: '髪の揺れ（' + nm + '）', inp: inp.id, out: q.id, len, damp, str, inv: false }];
+        App.physOn = true;
+      }
+      made.push(q.name);
+    });
   }
 
   App.editParam = null;
@@ -2650,6 +2667,7 @@ const SPLIT_STEPS = [
   { name: '頬', hint: '頬の赤み（あれば）', fill: true, opt: true },
   { name: '耳', hint: '見えている耳（あれば）', fill: false, opt: true },
   { name: '顔', hint: '肌の部分を輪郭の線まで', fill: true },
+  { name: '首の影', hint: 'あごの下の首の影（あれば）', fill: true, fillMode: 'ring', opt: true },   // 後ろは首の肌の色で埋める
   { name: '首', hint: '首の肌の部分', fill: true, fillMode: 'local' },   // 首の後ろは髪や服なので、場所ごとに近くの色で埋める
   { name: '体', hint: '服・腕・手など', fill: false },
   { name: '後ろ髪', hint: '残った部分がこの名前のパーツになります', remainder: true },
@@ -2991,7 +3009,7 @@ function spCut() {
     //   パーツが少し動いて下が見えても、パーツが少し広がったように見えて自然になる
     let holeN = 0; for (let j = 0; j < hole.length; j++) holeN += hole[j];
     // 目・眉・鼻・口・頬は下に肌があるはずなので周りの色、それ以外（顔・体・髪など）はパーツ自身の色で埋める
-    const feature = /目|眉|鼻|口|頬|ハイライト|まつ毛|瞳/.test(st.name);
+    const feature = /目|眉|鼻|口|頬|ハイライト|まつ毛|瞳/.test(st.name) || st.fillMode === 'ring';
     if (st.fillMode === 'local') {
       // そのまま近くの色で埋める（線だけは除いた状態で）
     } else if (!feature && holeN >= W * H * 0.005) {
@@ -3448,6 +3466,32 @@ function autoAnalyze() {
     if (adj && r.cy > F.y0 + F.h * 0.2 && r.cy < F.y1 - F.h * 0.1 && (r.cx < F.x0 + F.w * 0.15 || r.cx > F.x1 - F.w * 0.15) && r.n < face.n * 0.3) { put('耳', regPx(r)); usedReg.add(r.id); }
     else if (adj && r.cy > F.y1 - F.h * 0.1 && (r.x1 - r.x0) < F.w * 0.7) { put('首', regPx(r)); usedReg.add(r.id); }
   }
+  // 首の影：首の上の方（あごのすぐ下）で、首の肌よりはっきり暗い所
+  if (P['首'] && P['首'].length > 30) {
+    const D = SP.data.data, np = P['首'], lumOf = i => 0.299 * D[i * 4] + 0.587 * D[i * 4 + 1] + 0.114 * D[i * 4 + 2];
+    // 明るい所と暗い所の2つに分ける境目を求める（大津の方法）
+    const lv = np.map(lumOf), hist = new Float64Array(256); for (const l of lv) hist[Math.min(255, l | 0)]++;
+    let best = 0, thr = 128, sumAll = 0; for (let t = 0; t < 256; t++) sumAll += t * hist[t];
+    let wB = 0, sumB = 0;
+    for (let t = 0; t < 256; t++) { wB += hist[t]; if (!wB) continue; const wF = lv.length - wB; if (!wF) break; sumB += t * hist[t]; const mB = sumB / wB, mF = (sumAll - sumB) / wF, v = wB * wF * (mB - mF) ** 2; if (v > best) { best = v; thr = t; } }
+    let dSum = 0, dN = 0, lSum = 0, lN = 0; for (const l of lv) { if (l <= thr) { dSum += l; dN++; } else { lSum += l; lN++; } }
+    const contrast = lN && dN ? lSum / lN - dSum / dN : 0;
+    let ny0 = H, ny1 = 0; for (const i of np) { const y = (i / W) | 0; if (y < ny0) ny0 = y; if (y > ny1) ny1 = y; }
+    const nh = ny1 - ny0 + 1, inNeck = new Uint8Array(W * H); for (const i of np) inNeck[i] = 1;
+    const cand = new Uint8Array(W * H);
+    if (contrast > 30) for (const i of np) { const y = (i / W) | 0; if (y < ny0 + nh * 0.75 && lumOf(i) <= thr && !SP.line[i]) cand[i] = 1; }
+    const seen = new Uint8Array(W * H), sh = [];
+    for (const s0 of np) {
+      if (!cand[s0] || seen[s0]) continue;
+      const comp = [], st = [s0]; seen[s0] = 1; let top = H;
+      while (st.length) { const i = st.pop(); comp.push(i); top = Math.min(top, (i / W) | 0); for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) { const j = i + dy * W + dx; if (j >= 0 && j < W * H && cand[j] && !seen[j]) { seen[j] = 1; st.push(j); } } }   // 線で少し途切れていてもつなげる
+      if (top < ny0 + nh * 0.5 && comp.length > np.length * 0.03) for (const i of comp) sh.push(i);
+    }
+    if (sh.length && sh.length < np.length * 0.85) {
+      const isSh = new Uint8Array(W * H); for (const i of sh) isSh[i] = 1;
+      P['首'] = np.filter(i => !isSh[i]); put('首の影', sh);
+    }
+  }
   // 髪と似た色でも、頭から離れた下の方にあるもの（黒いズボンなど）は体に入れる
   const nearHead = r => r.y0 < F.y1 + F.h * 0.6;
   const body = all.filter(r => !usedReg.has(r.id) && r.n > 20 && r.cy > F.y1 + F.h * 0.05 && !(hairC && cdist(r.c, hairC) < 60 && nearHead(r)));
@@ -3456,7 +3500,7 @@ function autoAnalyze() {
 }
 /* 画素の一覧 → マスク（小さな穴を埋め、輪郭線も含める） */
 /* 輪郭線をどこまで取り込むか。顔と前髪は、まわりの細い髪の毛先まで線として取り込まないよう少なめに */
-const lineSteps = name => /顔|目/.test(name) ? 2 : name === '前髪' ? 3 : 6;
+const lineSteps = name => name === '首の影' ? 1 : /顔|目/.test(name) ? 2 : name === '前髪' ? 3 : 6;
 function proposalToMask(px, name) {
   SP.mask.fill(0);
   for (const i of px) if (SP.data.data[i * 4 + 3] >= 8) SP.mask[i] = 1;
