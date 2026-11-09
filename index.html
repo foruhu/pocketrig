@@ -318,7 +318,7 @@ nav.bottom > button{min-width:52px;padding:0 10px}
         <div class="seg"><button data-tool="ai">✨ AI</button><button data-tool="paint" class="on">塗る</button><button data-tool="erase">消す</button><button data-tool="wand">色で選択</button></div>
         <div id="spAiBar" class="sp-aibar hidden"><div class="seg"><button data-ais="1" class="on">＋ 選ぶ</button><button data-ais="0">− 除く</button></div><button id="spAiSize">範囲：-</button><button id="spAiReset">点を消す</button></div>
         <label class="f sp-size"><span id="spSizeL">太さ</span><input type="range" id="spSize" min="6" max="140" value="36"></label>
-        <div class="sp-opts"><label class="chk"><input type="checkbox" id="spSnap" checked>境目に合わせる</label><label class="chk"><input type="checkbox" id="spLines" checked>線も含める</label><label class="chk"><input type="checkbox" id="spFill" checked>後ろを埋める</label><label class="chk"><input type="checkbox" id="spShowCut" checked>切り出し済みを薄く表示</label></div>
+        <div class="sp-opts"><label class="chk"><input type="checkbox" id="spSnap" checked>境目に合わせる</label><label class="chk"><input type="checkbox" id="spLines" checked>線も含める</label><label class="chk"><input type="checkbox" id="spFill" checked>後ろを埋める</label><label class="chk"><input type="checkbox" id="spLineFill" checked>線画と塗りを分ける</label><label class="chk"><input type="checkbox" id="spShowCut" checked>切り出し済みを薄く表示</label></div>
         <div class="btnrow"><button id="spClear">塗りを消す</button><button id="spSkip">スキップ</button><button id="spCut" class="cutbtn">切り出す →</button></div>
       </div>
       <div id="spRem" class="hidden">
@@ -3539,7 +3539,7 @@ function spSetTool(t) {
 /* 完了：元のパーツを置き換える */
 /* 切り出したパーツを、プロのパーツ分けPSDと同じようなグループに入れる（髪の毛・眉毛・左目/左瞳・顔・上半身など） */
 function autoGroupOf(nm) {
-  let m;
+  let m; nm = nm.replace(/の(線|塗り)$/, '');
   if (/^(アホ毛|前髪|横髪|後ろ髪)$/.test(nm)) return '髪の毛';
   if (/^[左右]眉$/.test(nm)) return '眉毛';
   if ((m = nm.match(/^([左右])(上まつ毛|下まつ毛|まつ毛)$/))) return `${m[1]}目 / ${m[1]}まつ毛`;
@@ -3613,16 +3613,71 @@ function spExtendHidden() {
   }
   return n;
 }
+/* 線画と塗りを分ける（1つのパーツ → 「〇〇の線」と「〇〇の塗り」）
+   その画素の色＝塗りの色と線の色が、線の濃さで混ざったものとみて分ける。
+   塗りは線の下までつながった色になり、線は濃さ（不透明度）ごと取り出す。重ねると元の絵と同じ見た目になる */
+const LINEFILL_SKIP = /目$|まつ毛|瞳|ハイライト|白目|眉|口|頬|輪郭線|影|下地|の線$|の塗り$/;
+function splitLineFill(canvas) {
+  const w = canvas.width, h = canvas.height, N = w * h; if (N < 400) return null;
+  const d = canvas.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, w, h).data;
+  const L = new Float32Array(N), lums = [];
+  for (let j = 0; j < N; j++) { L[j] = 0.299 * d[j * 4] + 0.587 * d[j * 4 + 1] + 0.114 * d[j * 4 + 2]; if (d[j * 4 + 3] >= 250) lums.push(L[j]); }
+  if (lums.length < 200) return null;
+  lums.sort((a, b) => a - b);
+  const lmed = lums[lums.length >> 1];
+  // 線：塗りよりはっきり暗い所。少なすぎる（線がない・黒い髪など塗りも暗い）ときは分けない
+  const darkL = []; for (let j = 0; j < N; j++) if (d[j * 4 + 3] >= 250 && L[j] < Math.min(lmed - 60, lmed * 0.7)) darkL.push(L[j]);
+  if (darkL.length < Math.max(20, lums.length * 0.002)) return null;
+  darkL.sort((a, b) => a - b);
+  const ldark = darkL[darkL.length >> 1];
+  // 線の色：暗い所のうち、より暗い半分の平均
+  const lc = [0, 0, 0]; let ln = 0;
+  for (let j = 0; j < N; j++) if (d[j * 4 + 3] >= 250 && L[j] <= ldark) { lc[0] += d[j * 4]; lc[1] += d[j * 4 + 1]; lc[2] += d[j * 4 + 2]; ln++; }
+  lc[0] /= ln; lc[1] /= ln; lc[2] /= ln;
+  // 塗りの色：線でない所（ある程度明るい所）から、線の下へなめらかに広げる
+  const R = new Float32Array(N), G = new Float32Array(N), B = new Float32Array(N), Wt = new Float32Array(N), thr = ldark + (lmed - ldark) * 0.7;
+  for (let j = 0; j < N; j++) { R[j] = d[j * 4]; G[j] = d[j * 4 + 1]; B[j] = d[j * 4 + 2]; if (d[j * 4 + 3] >= 250 && L[j] >= thr) Wt[j] = 1; }
+  const isFill = Wt.slice(); pushPull(R, G, B, Wt, w, h);     // pushPull は Wt を書き換えるので、先に控えておく
+  const line = mkCanvas(w, h), fill = mkCanvas(w, h), li = line.getContext('2d').createImageData(w, h), fi = fill.getContext('2d').createImageData(w, h);
+  let lineN = 0;
+  for (let j = 0; j < N; j++) {
+    const q = j * 4, pa = d[q + 3]; if (!pa) continue;
+    const F = [R[j], G[j], B[j]], v = [F[0] - lc[0], F[1] - lc[1], F[2] - lc[2]], vv = v[0] ** 2 + v[1] ** 2 + v[2] ** 2;
+    let a = vv > 100 ? ((F[0] - d[q]) * v[0] + (F[1] - d[q + 1]) * v[1] + (F[2] - d[q + 2]) * v[2]) / vv : 0;
+    if (isFill[j] || a < 0.3) a = 0; else if (a > 0.9) a = 1;      // うすい影は塗りに残す
+    if (a > 0) { li.data[q] = lc[0]; li.data[q + 1] = lc[1]; li.data[q + 2] = lc[2]; li.data[q + 3] = Math.round(a * pa); lineN++; }
+    // 塗り：線の分を差し引いた色（線がほぼ不透明な所は、広げた塗りの色）
+    const fc = a >= 1 ? F : a > 0 ? [0, 1, 2].map(c => (d[q + c] - a * lc[c]) / (1 - a)) : [d[q], d[q + 1], d[q + 2]];
+    fi.data[q] = clamp(Math.round(fc[0]), 0, 255); fi.data[q + 1] = clamp(Math.round(fc[1]), 0, 255); fi.data[q + 2] = clamp(Math.round(fc[2]), 0, 255);
+    fi.data[q + 3] = pa >= 250 ? 255 : Math.round(pa * (1 - a));   // 外側のふちのなじみは線の側に任せる
+  }
+  if (lineN < N * 0.003) return null;
+  line.getContext('2d').putImageData(li, 0, 0); fill.getContext('2d').putImageData(fi, 0, 0);
+  return { line, fill };
+}
+function spSplitLineFill() {
+  if (!$('#spLineFill').checked) return;
+  const out = [];
+  for (const k of SP.cuts) {
+    const r = !k.under && !LINEFILL_SKIP.test(k.name) && splitLineFill(k.canvas);
+    if (!r) { out.push(k); continue; }
+    out.push({ ...k, name: k.name + 'の線', canvas: r.line }, { ...k, name: k.name + 'の塗り', canvas: r.fill });   // 線が手前
+  }
+  SP.cuts = out;
+}
 function spFinish() {
   if (SP.mask.some(v => v) && !confirm('塗った範囲はまだ切り出していません。捨てて完了しますか？')) return;
   if (!SP.cuts.length) { closeSplit(); return toast('切り出したパーツがないので、そのまま閉じました'); }
   spExtendHidden();
+  spSplitLineFill();
   const src = SP.src, idx = App.parts.indexOf(src);
   const grp = nm => [src.group, autoGroupOf(nm)].filter(Boolean).join(' / ');
-  const rest = makePart({ canvas: SP.work, left: src.left, top: src.top, name: SP.remName || '残り', group: grp(SP.remName || '残り'), x: src.base.x, y: src.base.y, opacity: src.base.opacity });
+  const remName = SP.remName || '残り', mkRest = (canvas, name) => makePart({ canvas, left: src.left, top: src.top, name, group: grp(remName), x: src.base.x, y: src.base.y, opacity: src.base.opacity });
+  const rlf = $('#spLineFill').checked && !LINEFILL_SKIP.test(remName) ? splitLineFill(SP.work) : null;
+  const restParts = rlf ? [mkRest(rlf.fill, remName + 'の塗り'), mkRest(rlf.line, remName + 'の線')] : [mkRest(SP.work, remName)];
   const mk = k => makePart({ canvas: k.canvas, left: src.left + k.x, top: src.top + k.y, name: k.name, group: grp(k.name), x: src.base.x, y: src.base.y, opacity: src.base.opacity });
   const unders = SP.cuts.filter(k => k.under).map(mk), cuts = SP.cuts.filter(k => !k.under).map(mk);
-  const added = [...unders, rest, ...cuts.reverse()].filter(Boolean);   // 下地はいちばん奥、最初に切った（手前の）パーツほど上に
+  const added = [...unders, ...restParts, ...cuts.reverse()].filter(Boolean);   // 下地はいちばん奥、最初に切った（手前の）パーツほど上に
   App.parts.splice(idx, 1, ...added);
   App.sel = null;
   closeSplit();
