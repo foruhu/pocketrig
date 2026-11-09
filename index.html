@@ -3550,9 +3550,73 @@ function autoGroupOf(nm) {
   if (/^(首の影|首|体|体の下地)$/.test(nm)) return '上半身';
   return '';
 }
+/* 見えないところも塗る（プロのパーツ分けと同じく、重なって隠れている所まで描いておく）
+   - パーツの中の穴（顔の目・口の跡など）を、そのパーツの色で埋める
+   - 手前のパーツに隠れている所へ、少しだけパーツを広げて塗る（顔は前髪の下・首はあごの下・体は首の下など）
+   止まっているときの見た目は変わらず、動かしたときにすき間が見えなくなる */
+const EXTEND_SKIP = /まつ毛|瞳|ハイライト|白目|眉|口|鼻|頬|輪郭線|影|アホ毛|目$/;
+function spExtendHidden() {
+  const W = SP.W, H = SP.H, cover = new Uint8Array(W * H);   // ここまでに見た（手前の）パーツで隠れている所
+  let n = 0;
+  for (const k of SP.cuts) {
+    const cw = k.canvas.width, ch = k.canvas.height, kx = k.x, ky = k.y;
+    const src = k.canvas.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, cw, ch).data;
+    if (!k.under && !EXTEND_SKIP.test(k.name) && cw * ch > 400) {
+      const r = Math.max(4, Math.round(Math.max(cw, ch) * 0.25));
+      const X0 = Math.max(0, k.x - r), Y0 = Math.max(0, k.y - r), X1 = Math.min(W - 1, k.x + cw - 1 + r), Y1 = Math.min(H - 1, k.y + ch - 1 + r);
+      const w = X1 - X0 + 1, h = Y1 - Y0 + 1, N = w * h, ox = k.x - X0, oy = k.y - Y0;
+      const A = new Uint8Array(N), R = new Float32Array(N), G = new Float32Array(N), B = new Float32Array(N), Wt = new Float32Array(N), solid = new Uint8Array(N);
+      const lums = [];
+      for (let y = 0; y < ch; y++) for (let x = 0; x < cw; x++) { const q = (y * cw + x) * 4, j = (y + oy) * w + x + ox; A[j] = src[q + 3]; R[j] = src[q]; G[j] = src[q + 1]; B[j] = src[q + 2]; if (src[q + 3] >= 8) solid[j] = 1; if (src[q + 3] >= 250) lums.push(0.299 * src[q] + 0.587 * src[q + 1] + 0.114 * src[q + 2]); }
+      lums.sort((a, b) => a - b); const lmed = lums[lums.length >> 1] || 0;
+      // 材料は、線（暗い所）やふちのなじみを除いた、パーツ自身の塗りの色
+      { const ok = new Uint8Array(N); for (let j = 0; j < N; j++) if (A[j] >= 250 && 0.299 * R[j] + 0.587 * G[j] + 0.114 * B[j] >= lmed * 0.75) ok[j] = 1;
+        const core = boxFilter(ok, w, h, 2, 0);   // 線や別の色とのさかい目（混ざった色）は材料にしない
+        for (let j = 0; j < N; j++) Wt[j] = core[j];
+        if (!Wt.some(v => v)) for (let j = 0; j < N; j++) Wt[j] = ok[j]; }
+      // パーツの中の穴：外側とつながっていない透明な所
+      const outside = new Uint8Array(N), st = [];
+      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if ((x === 0 || y === 0 || x === w - 1 || y === h - 1) && !solid[y * w + x]) { outside[y * w + x] = 1; st.push(y * w + x); }
+      while (st.length) { const j = st.pop(), x = j % w, y = (j / w) | 0; for (const [nx, ny] of [[x - 1, y], [x + 1, y], [x, y - 1], [x, y + 1]]) { if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue; const t = ny * w + nx; if (outside[t] || solid[t]) continue; outside[t] = 1; st.push(t); } }
+      // 手前のパーツに隠れていて、このパーツの近くにある所
+      const near = boxFilter(solid, w, h, r, 1);
+      const paint = new Uint8Array(N); let pn = 0;
+      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+        const j = y * w + x, cv = cover[(Y0 + y) * W + X0 + x], hid = cv >= 250;
+        if (A[j] >= 250) { if (cv >= 100 && !Wt[j]) { paint[j] = 2; pn++; } continue; }   // 隠れている線（前髪のふちの線など）も、動いたときに見えないよう塗りに変える
+        if ((!outside[j] && !solid[j]) || (hid && near[j])) { paint[j] = 1; pn++; }
+      }
+      if (pn && Wt.some(v => v)) {
+        // 塗る所は、線のすぐ外側から離れた所へ、パーツの色をなめらかに広げる
+        const R2 = R.slice(), G2 = G.slice(), B2 = B.slice(); pushPull(R2, G2, B2, Wt, w, h);
+        // 塗る所のうち、パーツ本体とつながっている所だけを残す（離れた飛び地は塗らない）
+        const keep = new Uint8Array(N), q = []; for (let j = 0; j < N; j++) if (solid[j]) { keep[j] = 1; q.push(j); }
+        while (q.length) { const j = q.pop(), x = j % w, y = (j / w) | 0; for (const [nx, ny] of [[x - 1, y], [x + 1, y], [x, y - 1], [x, y + 1]]) { if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue; const t = ny * w + nx; if (keep[t] || !paint[t]) continue; keep[t] = 1; q.push(t); } }
+        const c = mkCanvas(w, h), cx = c.getContext('2d'), img = cx.createImageData(w, h), d = img.data;
+        for (let j = 0; j < N; j++) {
+          const q4 = j * 4;
+          if (paint[j] && keep[j]) {
+            const a = paint[j] === 2 ? 0 : A[j] / 255;   // ふちのなじみ（半透明）の所は、元の色の下に塗った色を敷く
+            d[q4] = R[j] * a + R2[j] * (1 - a); d[q4 + 1] = G[j] * a + G2[j] * (1 - a); d[q4 + 2] = B[j] * a + B2[j] * (1 - a); d[q4 + 3] = 255;
+          } else if (A[j]) { d[q4] = R[j]; d[q4 + 1] = G[j]; d[q4 + 2] = B[j]; d[q4 + 3] = A[j]; }
+        }
+        // 余白を切り詰める
+        let x0 = w, y0 = h, x1 = -1, y1 = -1;
+        for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (d[(y * w + x) * 4 + 3]) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+        cx.putImageData(img, 0, 0);
+        const t = mkCanvas(x1 - x0 + 1, y1 - y0 + 1); t.getContext('2d').drawImage(c, -x0, -y0);
+        k.canvas = t; k.x = X0 + x0; k.y = Y0 + y0; n++;
+      }
+    }
+    // このパーツも、奥のパーツから見れば「手前で隠している」所になる（元の切り抜きの範囲で）
+    for (let y = 0; y < ch; y++) for (let x = 0; x < cw; x++) { const a = src[(y * cw + x) * 4 + 3], X = kx + x, Y = ky + y; if (a && X >= 0 && Y >= 0 && X < W && Y < H && a > cover[Y * W + X]) cover[Y * W + X] = a; }
+  }
+  return n;
+}
 function spFinish() {
   if (SP.mask.some(v => v) && !confirm('塗った範囲はまだ切り出していません。捨てて完了しますか？')) return;
   if (!SP.cuts.length) { closeSplit(); return toast('切り出したパーツがないので、そのまま閉じました'); }
+  spExtendHidden();
   const src = SP.src, idx = App.parts.indexOf(src);
   const grp = nm => [src.group, autoGroupOf(nm)].filter(Boolean).join(' / ');
   const rest = makePart({ canvas: SP.work, left: src.left, top: src.top, name: SP.remName || '残り', group: grp(SP.remName || '残り'), x: src.base.x, y: src.base.y, opacity: src.base.opacity });
