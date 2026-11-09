@@ -1624,6 +1624,8 @@ const PRESETS = [
   { name: '目玉 上下', min: -1, max: 1, def: 0, sub: '視線 -1（下）〜1（上）' },
   { name: '目の笑顔', min: 0, max: 1, def: 0, sub: '0〜1' },
   { name: '顔の傾き', min: -15, max: 15, def: 0, sub: '-15〜15' },
+  { name: '口の変形', min: -1, max: 1, def: 0, sub: '-1（への字）〜1（笑顔）' },
+  { name: '体の傾き', min: -10, max: 10, def: 0, sub: '-10〜10' },
 ];
 /* 左右のペア（「左目の開閉」と「右目の開閉」など） */
 const pairKey = q => q.name.replace(/左|右/g, '').replace(/\s+/g, '');
@@ -2151,14 +2153,16 @@ const ROLES = [
   { key: 'eyeL', label: '左目の開閉', kind: 'open', re: /左.*目|目.*左|eye.?l/i, not: /目玉|笑顔|視線/i },
   { key: 'eyeR', label: '右目の開閉', kind: 'open', re: /右.*目|目.*右|eye.?r/i, not: /目玉|笑顔|視線/i },
   { key: 'eyes', label: '両目の開閉', kind: 'open', re: /目|まばた|瞬|eye/i, not: /目玉|笑顔|視線|ball|smile/i },
-  { key: 'mouth', label: '口の開閉', kind: 'open', re: /口|mouth/i },
+  { key: 'mouthForm', label: '口の変形', kind: 'bi', re: /口.*(変形|形|笑)|mouth.?form/i },
+  { key: 'mouth', label: '口の開閉', kind: 'open', re: /口|mouth/i, not: /変形|form/i },
   { key: 'gazeX', label: '目玉 左右', kind: 'bi', re: /(目玉|視線|瞳).*(左右|横|x)|eye.?ball.?x/i },
   { key: 'gazeY', label: '目玉 上下', kind: 'bi', re: /(目玉|視線|瞳).*(上下|縦|y)|eye.?ball.?y/i },
   { key: 'smile', label: '目の笑顔', kind: 'open', re: /笑顔|笑い|smile/i },
-  { key: 'angZ', label: '顔の傾き', kind: 'bi', re: /傾き|かしげ|角度.?z|angle.?z/i },
+  { key: 'bodyZ', label: '体の傾き', kind: 'bi', re: /(体|胴|body).*(傾|z)/i },
+  { key: 'angZ', label: '顔の傾き', kind: 'bi', re: /傾き|かしげ|角度.?z|angle.?z/i, not: /体|胴|body/i },
   { key: 'angX', label: '顔の向き 左右', kind: 'bi', re: /(顔|頭|首|角度).*(左右|横|x)|angle.?x|左右/i, not: /体|胴|body|目玉|視線|瞳/i },
   { key: 'angY', label: '顔の向き 上下', kind: 'bi', re: /(顔|頭|首|角度).*(上下|縦|y)|angle.?y|上下/i, not: /体|胴|body|目玉|視線|瞳/i },
-  { key: 'body', label: '体の向き', kind: 'bi', re: /体|胴|body/i },
+  { key: 'body', label: '体の向き', kind: 'bi', re: /体|胴|body/i, not: /傾|z/i },
 ];
 App.roleMap = {};          // 役割 → パラメータID（ユーザーが選び直したもの）
 function detectRoles() {
@@ -2195,7 +2199,7 @@ function waveKeys(dur, step, f) {
 }
 const TEMPLATES = [
   {
-    id: 'idle', name: '待機（ゆらゆら＋まばたき）', dur: 6, roles: ['angX', 'angY', 'angZ', 'body', 'gazeX', 'gazeY', ...EYE_ROLES],
+    id: 'idle', name: '待機（ゆらゆら＋まばたき）', dur: 6, roles: ['angX', 'angY', 'angZ', 'body', 'bodyZ', 'mouthForm', 'gazeX', 'gazeY', ...EYE_ROLES],
     gen: (d, a, r) => {
       const ph = r() * 6.28, ph2 = r() * 6.28;
       return {
@@ -2203,6 +2207,8 @@ const TEMPLATES = [
         angY: waveKeys(d, 0.5, t => 0.1 * a * Math.sin(4 * Math.PI * t / d + ph2)),
         body: waveKeys(d, 0.5, t => 0.25 * a * Math.sin(2 * Math.PI * t / d + ph + 0.6)),
         angZ: waveKeys(d, 0.5, t => 0.12 * a * Math.sin(2 * Math.PI * t / d + ph + 1.4)),
+        bodyZ: waveKeys(d, 0.5, t => 0.15 * a * Math.sin(2 * Math.PI * t / d + ph + 2.2)),
+        mouthForm: [[0, 0.25], [d, 0.25]],   // ほんのり笑顔
         // 視線は顔の向きより少し先に動き、ときどき止まる
         gazeX: waveKeys(d, 0.5, t => 0.35 * Math.sin(2 * Math.PI * t / d + ph + 0.5)),
         gazeY: waveKeys(d, 0.5, t => 0.15 * Math.sin(4 * Math.PI * t / d + ph2 + 0.5)),
@@ -2250,7 +2256,7 @@ const TEMPLATES = [
     }
   },
   {
-    id: 'happy', name: '喜ぶ', dur: 3, roles: ['angX', 'angY', 'angZ', 'body', 'mouth', 'smile', ...EYE_ROLES],
+    id: 'happy', name: '喜ぶ', dur: 3, roles: ['angX', 'angY', 'angZ', 'body', 'bodyZ', 'mouth', 'mouthForm', 'smile', ...EYE_ROLES],
     gen: (d, a, r) => {
       const k = d / 3, tilt = (r() < 0.5 ? 1 : -1) * 0.3;
       const bounce = []; for (let i = 0; i <= 8; i++) bounce.push([i * 0.3 * k, i === 0 || i === 8 ? 0 : (i % 2 ? 0.35 : 0.05) * a]);
@@ -2261,13 +2267,15 @@ const TEMPLATES = [
         body: waveKeys(d, 0.3 * k, t => 0.35 * a * Math.sin(2 * Math.PI * t / (d / 2))),
         angZ: [[0, 0], [0.4 * k, tilt * 1.6 * a], [2.4 * k, tilt * 1.6 * a], [d, 0]],
         smile: [[0, 0], [0.2 * k, 1], [2.5 * k, 1], [2.8 * k, 0], [d, 0]],
+        mouthForm: [[0, 0], [0.2 * k, 1], [2.5 * k, 1], [2.8 * k, 0], [d, 0]],
+        bodyZ: waveKeys(d, 0.3 * k, t => 0.45 * a * Math.sin(2 * Math.PI * t / (d / 2) + 0.8)),
         eyes: [[0, 1], [0.2 * k, 0.6], [2.5 * k, 0.6], [2.8 * k, 1], [d, 1]],
         mouth: [[0, 0], [0.2 * k, 0.7], [2.5 * k, 0.7], [2.8 * k, 0], [d, 0]],
       };
     }
   },
   {
-    id: 'talk', name: '話す（口パク）', dur: 5, roles: ['mouth', 'angX', 'angY', 'angZ', 'gazeX', ...EYE_ROLES],
+    id: 'talk', name: '話す（口パク）', dur: 5, roles: ['mouth', 'mouthForm', 'angX', 'angY', 'angZ', 'gazeX', ...EYE_ROLES],
     gen: (d, a, r) => {
       const m = [[0, 0]]; let t = 0.25;
       while (t < d - 0.45) {
@@ -2284,12 +2292,13 @@ const TEMPLATES = [
         angY: waveKeys(d, 0.4, t => 0.12 * a * Math.sin(6 * Math.PI * t / d + ph)),
         angZ: waveKeys(d, 0.5, t => 0.15 * a * Math.sin(2 * Math.PI * t / d + ph + 2)),
         gazeX: waveKeys(d, 0.5, t => 0.2 * Math.sin(2 * Math.PI * t / d + ph + 0.4)),
+        mouthForm: waveKeys(d, 0.8, t => 0.25 + 0.2 * Math.sin(2 * Math.PI * t / d + ph + 1)),
         eyes: blinkKeys(d, r, Math.max(1, Math.round(d / 2.5))),
       };
     }
   },
   {
-    id: 'surprise', name: '驚く', dur: 2.5, roles: ['angY', 'body', 'mouth', 'gazeY', ...EYE_ROLES],
+    id: 'surprise', name: '驚く', dur: 2.5, roles: ['angY', 'body', 'mouth', 'mouthForm', 'gazeY', ...EYE_ROLES],
     gen: (d, a, r) => {
       const k = d / 2.5;
       return {
@@ -2297,6 +2306,7 @@ const TEMPLATES = [
         angY: [[0, 0], [0.14 * k, 0.5 * a], [1.5 * k, 0.4 * a], [2.15 * k, 0], [d, 0]],
         body: [[0, 0], [0.14 * k, -0.4 * a], [1.6 * k, -0.3 * a], [2.2 * k, 0], [d, 0]],
         gazeY: [[0, 0], [0.14 * k, 0.3], [1.6 * k, 0.25], [2.2 * k, 0], [d, 0]],
+        mouthForm: [[0, 0], [0.14 * k, -0.4], [1.6 * k, -0.3], [2.2 * k, 0], [d, 0]],
         eyes: [[0, 1], [2.05 * k, 1], [2.12 * k, 0], [2.18 * k, 0], [2.3 * k, 1], [d, 1]],
       };
     }
@@ -2460,9 +2470,9 @@ function rigPlan(cats) {
     else plan.push({ id: 'eyes', name: '目の開閉', sub: '両目まとめて' });
     plan.push({ id: 'gaze', name: '目玉 左右・上下', sub: '視線。目のふちは止めたまま、瞳のあたりだけ動かす' }, { id: 'smile', name: '目の笑顔', sub: '下まぶたが上がって、にっこりした目になる' });
   }
-  if (by('mouth').length) plan.push({ id: 'mouth', name: '口の開閉', sub: '口を縦に開く' });
+  if (by('mouth').length) plan.push({ id: 'mouth', name: '口の開閉', sub: '口を縦に開く' }, { id: 'mouthForm', name: '口の変形', sub: '1で口角が上がって笑顔、-1で口角が下がってへの字' });
   if (head.length) plan.push({ id: 'angX', name: '顔の向き 左右', sub: '顔のパーツを奥行きに合わせてずらす' }, { id: 'angY', name: '顔の向き 上下' }, { id: 'angZ', name: '顔の傾き', sub: '首の付け根を軸に頭を傾ける' });
-  if (body.length) plan.push({ id: 'bodyX', name: '体の向き 左右' }, { id: 'breath', name: '呼吸', sub: '体がわずかに上下する' });
+  if (body.length) plan.push({ id: 'bodyX', name: '体の向き 左右' }, { id: 'bodyZ', name: '体の傾き', sub: '腰のあたりを軸に、上半身ほど大きく傾ける' }, { id: 'breath', name: '呼吸', sub: '体がわずかに上下する' });
   if (hair.length) plan.push({ id: 'sway', name: '髪揺れ（左・中・右）', sub: '髪を3つの帯に分けて、それぞれ少しずつ違う揺れ方をさせる。顔の向きに合わせて自動で揺れる' });
   return { plan, faceB, eyes, brows, by, head, body, hair, neckShadow: by('neckShadow'), iris: by('iris') };
 }
@@ -2677,6 +2687,38 @@ function autoRig(cats, want, opts = {}) {
       const cx = p.left + p.w / 2 + p.base.x, cy = p.top + p.h / 2 + p.base.y;
       const mk = deg => { const t = deg * Math.PI / 180, c = Math.cos(t), s = Math.sin(t), dx = cx - px, dy = cy - py; return KF({ rot: deg, x: px + dx * c - dy * s - cx, y: py + dx * s + dy * c - cy }); };
       bindKeys(p, q, { 15: mk(7), '-15': mk(-7) });
+    }
+    made.push(q.name);
+  }
+
+  // ---- 口の変形：口の両端（口角）を上げ下げし、真ん中は少しだけ逆に動かす ----
+  if (want.has('mouthForm') && by('mouth').length) {
+    const q = ensureParam('口の変形', -1, 1, 0); clearOld(q);
+    const ms = by('mouth'), b = unionBox(ms), A = Math.max(b.h * 0.6, fw * 0.025);
+    for (const p of ms) {
+      needMesh(p);
+      const mk = s => KF({ offs: offsBy(p, (x) => { const u = clamp((x - b.x0) / b.w, 0, 1), e = Math.pow(Math.abs(2 * u - 1), 2); return [0, -s * A * (e - 0.25)]; }) });
+      bindKeys(p, q, { 1: mk(1), '-1': mk(-1) });
+    }
+    made.push(q.name);
+  }
+
+  // ---- 体の傾き：腰のあたりを軸に、上へ行くほど大きく回す（足元は動かさない）。頭は首の付け根の傾きに合わせて回す ----
+  if (want.has('bodyZ')) {
+    const q = ensureParam('体の傾き', -10, 10, 0); clearOld(q);
+    const bb = unionBox(R.body), DEG = 6;
+    const py = Math.min(bb.y1, faceB.y1 + fh * 3.2), px = bb.cx, top = Math.min(bb.y0, faceB.y1), span = Math.max(1, py - top);
+    const rotAt = (x, y, deg) => { const t = deg * Math.PI / 180, c = Math.cos(t), sn = Math.sin(t), dx = x - px, dy = y - py; return [px + dx * c - dy * sn - x, py + dx * sn + dy * c - y]; };
+    for (const p of R.body) {
+      needMesh(p);
+      const mk = sg => KF({ offs: offsBy(p, (x, y) => rotAt(x, y, sg * DEG * clamp((py - y) / span, 0, 1))) });
+      bindKeys(p, q, { 10: mk(1), '-10': mk(-1) });
+    }
+    const hd = DEG * clamp((py - faceB.y1) / span, 0, 1);
+    for (const p of R.head) {
+      const cx = p.left + p.w / 2 + p.base.x, cy = p.top + p.h / 2 + p.base.y;
+      const mk = sg => { const [dx, dy] = rotAt(cx, cy, sg * hd); return KF({ rot: sg * hd, x: dx, y: dy }); };
+      bindKeys(p, q, { 10: mk(1), '-10': mk(-1) });
     }
     made.push(q.name);
   }
