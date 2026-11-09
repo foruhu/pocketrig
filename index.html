@@ -121,6 +121,10 @@ button.auto{background:linear-gradient(135deg,#ff7aa8,#b98cff);border:0;color:#2
 #split .seg button[data-tool=ai].on,#split .seg button[data-tool=ai]{font-weight:700}
 .cutbtn{background:var(--accent);border-color:var(--accent);color:#2a0f1a;font-weight:700}
 .rigbar{padding:10px 10px 2px}
+#camBox{position:absolute;right:8px;bottom:8px;width:96px;background:rgba(20,20,28,.92);border:1px solid var(--line);border-radius:12px;padding:6px;z-index:5;display:flex;flex-direction:column;gap:5px}
+#camBox video{width:100%;aspect-ratio:4/3;object-fit:cover;transform:scaleX(-1);border-radius:8px;background:#000}
+#camStatus{font-size:10px;color:var(--muted);min-height:12px;line-height:1.3}
+#camBox button{min-height:30px;font-size:11px;padding:0 4px}
 .rigbar button{width:100%;min-height:44px;font-size:14px}
 .chk.big{display:block;position:relative;padding:10px 10px 10px 40px;margin:0 0 6px;background:var(--panel2);border:1px solid var(--line);border-radius:10px;font-size:14px;color:var(--text)}
 .chk.big input{position:absolute;left:12px;top:12px;width:18px;height:18px;accent-color:var(--accent)}
@@ -208,6 +212,8 @@ nav.bottom > button{min-width:52px;padding:0 10px}
         <button id="dbMesh">網</button>
         <button id="dbReset">戻す</button>
       </div>
+      <div id="camBox" class="hidden"><video id="camVideo" playsinline muted autoplay></video><div id="camStatus"></div>
+        <button id="camCalib">正面にする</button><button id="camStop">止める</button></div>
       <div id="empty">
         <h1>ポケット<span>リグ</span></h1>
         <p>パーツ分けしたPSDを読み込んで<br>スマホで動くキャラクターを作ろう</p>
@@ -236,6 +242,7 @@ nav.bottom > button{min-width:52px;padding:0 10px}
       </div>
       <div id="motionPane" class="pane hidden">
         <div class="mo-bar"><select id="moSel"></select><button id="moAuto" class="sm auto">✨ おまかせ</button><button id="moNew" class="sm">＋ 新規</button><button id="moMore" class="sm" aria-label="モーションの設定">⋯</button></div>
+        <div class="btnrow pad" style="padding-top:2px;padding-bottom:4px"><button id="camBtn">📷 カメラで動かす</button></div>
         <div id="moBody" class="hidden">
           <div class="mo-time"><span id="moT">0.00</span><input type="range" id="moScrub" min="0" max="3" step="0.01" value="0"><span id="moDur">3.0秒</span></div>
           <div class="btnrow mo-ctl"><button id="moPlay">▶ 再生</button><button id="moRec">● 記録</button><button id="moKey">◆ キー</button><button id="moDelKey" aria-label="この時間のキーを削除">✕</button></div>
@@ -1626,6 +1633,7 @@ const PRESETS = [
   { name: '顔の傾き', min: -15, max: 15, def: 0, sub: '-15〜15' },
   { name: '口の変形', min: -1, max: 1, def: 0, sub: '-1（への字）〜1（笑顔）' },
   { name: '体の傾き', min: -10, max: 10, def: 0, sub: '-10〜10' },
+  { name: '瞳の大きさ', min: -1, max: 1, def: 0, sub: '-1（小さく）〜1（大きく）' },
 ];
 /* 左右のペア（「左目の開閉」と「右目の開閉」など） */
 const pairKey = q => q.name.replace(/左|右/g, '').replace(/\s+/g, '');
@@ -2024,7 +2032,7 @@ function renderMotion() {
   $('#moBody').classList.toggle('hidden', !m); $('#moEmpty').classList.toggle('hidden', !!m);
   $('#moMore').disabled = !m;
   if (!m) {
-    $('#moEmpty').innerHTML = App.params.length ? '「✨ おまかせ」で待機・うなずき・話すなどの動きを自動で作れます。<br>自分で作るときは「＋ 新規」→「● 記録」を押してから、下のスライダーを指で動かしてください。'
+    $('#moEmpty').innerHTML = App.params.length ? '「✨ おまかせ」で待機・うなずき・話すなどの動きを自動で作れます。<br>自分で作るときは「＋ 新規」→「● 記録」を押してから、下のスライダーを指で動かしてください。<br>「📷 カメラで動かす」を使うと、自分の顔の動きでキャラクターが動きます。「● 記録」と組み合わせると、そのままモーションになります。'
       : 'モーションはパラメータの動きを時間に沿って記録したものです。先に「パラメータ」タブでパラメータを作ってください。';
     return;
   }
@@ -2157,6 +2165,7 @@ const ROLES = [
   { key: 'mouth', label: '口の開閉', kind: 'open', re: /口|mouth/i, not: /変形|form/i },
   { key: 'gazeX', label: '目玉 左右', kind: 'bi', re: /(目玉|視線|瞳).*(左右|横|x)|eye.?ball.?x/i },
   { key: 'gazeY', label: '目玉 上下', kind: 'bi', re: /(目玉|視線|瞳).*(上下|縦|y)|eye.?ball.?y/i },
+  { key: 'pupil', label: '瞳の大きさ', kind: 'bi', re: /(瞳|目玉).*(大き|サイズ)|pupil/i },
   { key: 'smile', label: '目の笑顔', kind: 'open', re: /笑顔|笑い|smile/i },
   { key: 'bodyZ', label: '体の傾き', kind: 'bi', re: /(体|胴|body).*(傾|z)/i },
   { key: 'angZ', label: '顔の傾き', kind: 'bi', re: /傾き|かしげ|角度.?z|angle.?z/i, not: /体|胴|body/i },
@@ -2298,7 +2307,7 @@ const TEMPLATES = [
     }
   },
   {
-    id: 'surprise', name: '驚く', dur: 2.5, roles: ['angY', 'body', 'mouth', 'mouthForm', 'gazeY', ...EYE_ROLES],
+    id: 'surprise', name: '驚く', dur: 2.5, roles: ['angY', 'body', 'mouth', 'mouthForm', 'gazeY', 'pupil', ...EYE_ROLES],
     gen: (d, a, r) => {
       const k = d / 2.5;
       return {
@@ -2307,6 +2316,7 @@ const TEMPLATES = [
         body: [[0, 0], [0.14 * k, -0.4 * a], [1.6 * k, -0.3 * a], [2.2 * k, 0], [d, 0]],
         gazeY: [[0, 0], [0.14 * k, 0.3], [1.6 * k, 0.25], [2.2 * k, 0], [d, 0]],
         mouthForm: [[0, 0], [0.14 * k, -0.4], [1.6 * k, -0.3], [2.2 * k, 0], [d, 0]],
+        pupil: [[0, 0], [0.14 * k, 0.8], [1.6 * k, 0.6], [2.2 * k, 0], [d, 0]],
         eyes: [[0, 1], [2.05 * k, 1], [2.12 * k, 0], [2.18 * k, 0], [2.3 * k, 1], [d, 1]],
       };
     }
@@ -2469,6 +2479,7 @@ function rigPlan(cats) {
     if (sides.size === 2) plan.push({ id: 'eyeL', name: '左目の開閉', sub: 'キャラクターから見て左の目（画面では右側）' }, { id: 'eyeR', name: '右目の開閉', sub: 'キャラクターから見て右の目（画面では左側）' });
     else plan.push({ id: 'eyes', name: '目の開閉', sub: '両目まとめて' });
     plan.push({ id: 'gaze', name: '目玉 左右・上下', sub: '視線。目のふちは止めたまま、瞳のあたりだけ動かす' }, { id: 'smile', name: '目の笑顔', sub: '下まぶたが上がって、にっこりした目になる' });
+    if (by('iris').length) plan.push({ id: 'pupil', name: '瞳の大きさ', sub: '驚いたときなどに瞳を大きく・小さくする（瞳が別のパーツのとき）' });
   }
   if (by('mouth').length) plan.push({ id: 'mouth', name: '口の開閉', sub: '口を縦に開く' }, { id: 'mouthForm', name: '口の変形', sub: '1で口角が上がって笑顔、-1で口角が下がってへの字' });
   if (head.length) plan.push({ id: 'angX', name: '顔の向き 左右', sub: '顔のパーツを奥行きに合わせてずらす' }, { id: 'angY', name: '顔の向き 上下' }, { id: 'angZ', name: '顔の傾き', sub: '首の付け根を軸に頭を傾ける' });
@@ -2599,6 +2610,17 @@ function autoRig(cats, want, opts = {}) {
     made.push(qx.name, qy.name);
   }
   // ---- 目の笑顔：下半分を持ち上げ、真ん中ほど高く（弓なりに）。左右の目それぞれの範囲で計算する ----
+  // ---- 瞳の大きさ：左右の瞳それぞれの中心から広げる・縮める ----
+  if (want.has('pupil') && R.iris.length) {
+    const q = ensureParam('瞳の大きさ', -1, 1, 0); clearOld(q);
+    const ib = { L: boxOf(R.iris, 'L'), R: boxOf(R.iris, 'R'), A: boxOf(R.iris, null) };
+    for (const p of [...R.iris, ...R.eyes.filter(p => cat(p) === 'highlight')]) {
+      needMesh(p);
+      const mk = k => KF({ offs: offsBy(p, (x, y) => { const b = ib[x < cxF ? 'L' : 'R'] || ib.A, cx = b.x0 + b.w / 2, cy = b.y0 + b.h / 2; return [(x - cx) * k, (y - cy) * k]; }) });
+      bindKeys(p, q, { 1: mk(0.22), '-1': mk(-0.3) });
+    }
+    made.push(q.name);
+  }
   if (want.has('smile') && eyeParts.length) {
     const q = ensureParam('目の笑顔', 0, 1, 0); clearOld(q);
     const bxL = boxOf(eyeParts, 'L'), bxR = boxOf(eyeParts, 'R'), bxA = boxOf(eyeParts, null);
@@ -2765,6 +2787,125 @@ function autoRig(cats, want, opts = {}) {
   $('#playParams').click();
 }
 $('#autoRig').onclick = showRigDialog;
+
+/* =========================================================
+   カメラで動かす（フェイストラッキング）
+   - MediaPipe Face Landmarker で、カメラの顔から向き・まばたき・口などを読み取る
+   - 読み取った値を、パラメータの役割（目の開閉・顔の向きなど）に合わせて流し込む
+   - 映像は端末の中だけで処理し、外へは送らない（初回にAIの読み込みだけ通信する）
+   ========================================================= */
+const MP_VER = '0.10.14';
+const MP_LIB = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VER}/vision_bundle.mjs`;
+const MP_WASM = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VER}/wasm`;
+const MP_MODEL = 'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task';
+const CAM = { on: false, lm: null, stream: null, raf: 0, last: -1, sm: {}, neutral: null, map: null, lost: 0, fps: 0, fpsT: 0, fpsN: 0 };
+
+async function camLoadModel() {
+  if (CAM.lm) return CAM.lm;
+  camStatus('顔を読み取るAIを準備しています…（初回のみ通信があります）');
+  const mp = await import(MP_LIB);
+  const fs = await mp.FilesetResolver.forVisionTasks(MP_WASM);
+  const opts = d => ({ baseOptions: { modelAssetPath: MP_MODEL, delegate: d }, runningMode: 'VIDEO', numFaces: 1, outputFaceBlendshapes: true });
+  try { CAM.lm = await mp.FaceLandmarker.createFromOptions(fs, opts('GPU')); }
+  catch (e) { console.warn('GPU', e); CAM.lm = await mp.FaceLandmarker.createFromOptions(fs, opts('CPU')); }
+  return CAM.lm;
+}
+function camStatus(t) { const el = $('#camStatus'); if (el) el.textContent = t; }
+
+async function camStart() {
+  if (!App.doc) return toast('まだ何も開いていません');
+  if (!App.params.length) return toast('先にパラメータを作ってください（パラメータタブの「✨ おまかせ」）', 4000);
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return toast('このブラウザではカメラを使えません');
+  $('#camBox').classList.remove('hidden');
+  stopPlay();
+  try {
+    CAM.stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } }, audio: false });
+    const v = $('#camVideo'); v.srcObject = CAM.stream; await v.play();
+    await camLoadModel();
+  } catch (e) {
+    console.error(e); camStop();
+    const msg = String(e && ((e.name || '') + ' ' + (e.message || '')) || e);
+    return toast(/NotAllowed|Permission/i.test(msg) ? 'カメラの使用が許可されませんでした。ブラウザの設定でカメラを許可してください'
+      : /load failed|fetch|import|network/i.test(msg) ? '顔を読み取るAIを読み込めませんでした。通信を確認するか、GitHub Pagesに置いたページをSafariやChromeで開いてください（Claudeアプリ内のプレビューでは読み込めません）'
+        : 'カメラを開始できませんでした（' + msg.trim() + '）', 7000);
+  }
+  CAM.on = true; CAM.map = camMapping(); CAM.sm = {}; CAM.lost = 0; CAM.neutral = null; CAM.calibNext = true;
+  for (const id of CAM.map.ids) if (!MO.touched.has(id)) MO.touched.set(id, { samples: [] });   // モーション再生より優先し、記録中なら記録する
+  $('#camBtn').textContent = '■ カメラを止める';
+  camStatus('顔をカメラに向けてください');
+  CAM.raf = requestAnimationFrame(camLoop);
+}
+function camStop() {
+  CAM.on = false; cancelAnimationFrame(CAM.raf);
+  if (CAM.stream) { for (const t of CAM.stream.getTracks()) t.stop(); CAM.stream = null; }
+  if (CAM.map) for (const id of CAM.map.ids) { if (MO.rec && MO.touched.has(id)) finishTouch(id); else MO.touched.delete(id); }
+  $('#camBox').classList.add('hidden'); $('#camBtn').textContent = '📷 カメラで動かす';
+  scheduleSave();
+}
+/* パラメータの役割（目の開閉・顔の向きなど）から、カメラの値をどこへ入れるか決める */
+function camMapping() {
+  const roles = detectRoles(), get = k => App.params.find(q => q.id === roles[k]) || null, ids = [];
+  const m = {};
+  for (const k of ['angX', 'angY', 'angZ', 'body', 'bodyZ', 'eyeL', 'eyeR', 'eyes', 'mouth', 'mouthForm', 'gazeX', 'gazeY', 'smile']) { const q = get(k); if (q) { m[k] = q; ids.push(q.id); } }
+  return { m, ids };
+}
+/* 顔の点（478点）とブレンドシェイプ（52種類の表情の強さ）から、必要な値を取り出す */
+function camRead(res) {
+  const L = res.faceLandmarks && res.faceLandmarks[0]; if (!L) return null;
+  const bs = {}; for (const c of (res.faceBlendshapes && res.faceBlendshapes[0] ? res.faceBlendshapes[0].categories : [])) bs[c.categoryName] = c.score;
+  const eR = L[33], eL = L[263], nose = L[1], chin = L[152];          // カメラ映像は鏡になっていないので、263が本人の左目
+  const ex = (eR.x + eL.x) / 2, ey = (eR.y + eL.y) / 2, ed = Math.hypot(eL.x - eR.x, eL.y - eR.y) || 1e-3;
+  const g = n => bs[n] || 0;
+  return {
+    yaw: (nose.x - ex) / ed,                           // 本人が自分の左を向くと＋（映像では右へ）
+    pitch: -((nose.y - ey) / ((chin.y - ey) || 1e-3)),  // 上を向くと＋
+    roll: Math.atan2(eL.y - eR.y, eL.x - eR.x) * 180 / Math.PI,
+    blinkL: g('eyeBlinkLeft'), blinkR: g('eyeBlinkRight'),
+    jaw: g('jawOpen'), smile: (g('mouthSmileLeft') + g('mouthSmileRight')) / 2, frown: (g('mouthFrownLeft') + g('mouthFrownRight')) / 2,
+    squint: (g('eyeSquintLeft') + g('eyeSquintRight')) / 2,
+    lookX: (g('eyeLookOutLeft') + g('eyeLookInRight') - g('eyeLookInLeft') - g('eyeLookOutRight')) / 2,   // 本人の左を見ると＋
+    lookY: (g('eyeLookUpLeft') + g('eyeLookUpRight') - g('eyeLookDownLeft') - g('eyeLookDownRight')) / 2,
+  };
+}
+function camApply(f) {
+  if (CAM.calibNext) { CAM.neutral = { yaw: f.yaw, pitch: f.pitch, roll: f.roll }; CAM.calibNext = false; }
+  const N = CAM.neutral || { yaw: 0, pitch: 0, roll: 0 }, m = CAM.map.m;
+  // 値を -1〜1（開閉は 0〜1）にそろえる
+  const t = {
+    angX: clamp((f.yaw - N.yaw) / 0.35, -1, 1), angY: clamp((f.pitch - N.pitch) / 0.18, -1, 1), angZ: clamp((f.roll - N.roll) / 20, -1, 1),
+    eyeL: 1 - clamp((f.blinkL - 0.1) / 0.5, 0, 1), eyeR: 1 - clamp((f.blinkR - 0.1) / 0.5, 0, 1),
+    mouth: clamp(f.jaw * 1.8, 0, 1), mouthForm: clamp((f.smile - f.frown) * 1.6, -1, 1), smile: clamp((f.squint - 0.3) * 2, 0, 1),
+    gazeX: clamp(f.lookX * 2.2, -1, 1), gazeY: clamp(f.lookY * 2.2, -1, 1),
+  };
+  t.eyes = (t.eyeL + t.eyeR) / 2; t.body = t.angX * 0.35; t.bodyZ = t.angZ * 0.35;
+  // まばたきは左右の差が小さければそろえる（片目だけ閉じて見えるのを防ぐ）
+  if (App.linkLR && Math.abs(t.eyeL - t.eyeR) < 0.35) t.eyeL = t.eyeR = (t.eyeL + t.eyeR) / 2;
+  for (const k in m) {
+    const q = m[k], v = t[k]; if (v == null) continue;
+    const a = /eye|mouth$/.test(k) ? 0.6 : 0.35;                 // まばたき・口は素早く、向きはなめらかに
+    const s = CAM.sm[k] = CAM.sm[k] == null ? v : CAM.sm[k] + (v - CAM.sm[k]) * a;
+    const kind = (ROLES.find(r => r.key === k) || { kind: 'bi' }).kind;
+    q.value = kind === 'open' ? q.min + clamp(s, 0, 1) * (q.max - q.min) : roleValue('bi', q, s);
+  }
+}
+function camLoop(now) {
+  if (!CAM.on) return;
+  const v = $('#camVideo');
+  if (v.readyState >= 2 && CAM.lm) {
+    const ts = Math.max(CAM.last + 1, now); CAM.last = ts;
+    let res = null; try { res = CAM.lm.detectForVideo(v, ts); } catch (e) { console.warn(e); }
+    const f = res && camRead(res);
+    if (f) { camApply(f); CAM.lost = 0; } else if (++CAM.lost === 15) camStatus('顔が見つかりません');
+    if (f && CAM.lost === 0) camStatus(MO.rec ? '● 記録中' : '');
+    CAM.fpsN++; if (now - CAM.fpsT > 1000) { CAM.fps = CAM.fpsN; CAM.fpsN = 0; CAM.fpsT = now; }
+    for (const id of CAM.map.ids) if (!MO.touched.has(id)) MO.touched.set(id, { samples: [] });   // 記録のあとも、カメラの値を優先し続ける
+    evaluateAll(); liveParamUI();
+  }
+  CAM.raf = requestAnimationFrame(camLoop);
+}
+$('#camBtn').onclick = () => CAM.on ? camStop() : camStart();
+$('#camStop').onclick = camStop;
+$('#camCalib').onclick = () => { CAM.calibNext = true; toast('いまの顔の向きを正面にしました', 1500); };
 
 /* =========================================================
    1枚絵からパーツ分け
