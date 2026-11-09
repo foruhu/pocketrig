@@ -2887,12 +2887,14 @@ function spCut() {
   let x0 = W, y0 = H, x1 = -1, y1 = -1;
   for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (M[y * W + x]) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
   if (x1 < 0) return toast('まだ塗られていません。指でなぞってください');
-  // 境界を1px ぼかした柔らかいマスク（切り口のギザギザを抑える）
+  x0 = Math.max(0, x0 - 1); y0 = Math.max(0, y0 - 1); x1 = Math.min(W - 1, x1 + 1); y1 = Math.min(H - 1, y1 + 1);
+  // 切り口のまわり1pxも、元の絵の色のままパーツに含める。
+  //   後ろは埋めた色に変わるので、ここをパーツで覆っておかないと、動かす前から切り口に色のふちが見えてしまう
   const soft = i => { const x = i % W, y = (i / W) | 0; let s = 0, n = 0; for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) { const xx = x + dx, yy = y + dy; if (xx < 0 || yy < 0 || xx >= W || yy >= H) continue; s += M[yy * W + xx]; n++; } return s / n; };
   const cw = x1 - x0 + 1, ch = y1 - y0 + 1, part = mkCanvas(cw, ch), pctx = part.getContext('2d');
   const pimg = pctx.createImageData(cw, ch);
   for (let y = 0; y < ch; y++) for (let x = 0; x < cw; x++) {
-    const i = (y0 + y) * W + x0 + x, k = (y * cw + x) * 4, a = soft(i); if (a <= 0) continue;
+    const i = (y0 + y) * W + x0 + x, k = (y * cw + x) * 4, a = soft(i) > 0 ? 1 : 0; if (a <= 0) continue;
     pimg.data[k] = D[i * 4]; pimg.data[k + 1] = D[i * 4 + 1]; pimg.data[k + 2] = D[i * 4 + 2]; pimg.data[k + 3] = D[i * 4 + 3] * a;
   }
   pctx.putImageData(pimg, 0, 0);
@@ -2947,7 +2949,7 @@ function spCut() {
       D[k] = R[j]; D[k + 1] = Gc[j]; D[k + 2] = B[j];
     }
   } else {
-    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) { const i = y * W + x; if (M[i]) D[i * 4 + 3] = 0; else { const a = soft(i); if (a > 0) D[i * 4 + 3] *= 1 - a; } }
+    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) { const i = y * W + x; if (M[i] || soft(i) > 0) D[i * 4 + 3] = 0; }
   }
   SP.wctx.putImageData(SP.data, 0, 0);
   SP.cuts.push({ name: st.name, canvas: part, x: x0, y: y0 });
@@ -3226,22 +3228,47 @@ function autoAnalyze() {
   const skins = all.filter(r => r.n > opaque * 0.0015 && isSkin(...r.c));
   const faceScore = r => { const rel = (r.cy - fy0) / figH; return r.n * Math.pow(Math.max(0, 1 - rel), 4) * ((r.x1 - r.x0) > (r.y1 - r.y0) * 2.5 ? 0.3 : 1); };
   const faceCand = skins.filter(r => (r.cy - fy0) / figH < 0.6).sort((a, b) => faceScore(b) - faceScore(a));
-  const face = faceCand[0];
-  if (!face) return null;
+  const face0 = faceCand[0];
+  if (!face0) return null;
+  // 前髪の毛先や眉で分かれたおでこ・こめかみの肌も、同じ顔としてまとめる（目を顔の中に囲むため）
+  const fw0 = face0.x1 - face0.x0 + 1, fh0 = face0.y1 - face0.y0 + 1;
+  const faceIds = new Set([face0.id]);
+  for (const r of all) {
+    if (r === face0 || r.n < 8 || !isSkin(...r.c) || cdist(r.c, face0.c) > 50) continue;
+    if (r.cy < face0.y0 - fh0 * 0.5 || r.cy > face0.y1 - fh0 * 0.2 || r.cx < face0.x0 - fw0 * 0.05 || r.cx > face0.x1 + fw0 * 0.05) continue;
+    if (r.n > face0.n * 0.6) continue;
+    faceIds.add(r.id);
+  }
+  const face = { id: face0.id, c: face0.c, n: 0, x0: W, y0: H, x1: 0, y1: 0 };
+  for (const r of all) if (faceIds.has(r.id)) { face.n += r.n; face.x0 = Math.min(face.x0, r.x0); face.y0 = Math.min(face.y0, r.y0); face.x1 = Math.max(face.x1, r.x1); face.y1 = Math.max(face.y1, r.y1); }
   const F = { x0: face.x0, y0: face.y0, x1: face.x1, y1: face.y1 };
   F.w = F.x1 - F.x0 + 1; F.h = F.y1 - F.y0 + 1; F.cx = (F.x0 + F.x1) / 2; F.cy = (F.y0 + F.y1) / 2;
-  // 3. 顔の穴：顔の範囲の中で、顔の外側とつながっていない部分
-  const bw = F.w + 2, bh = F.h + 2, ox = F.x0 - 1, oy = F.y0 - 1, out = new Uint8Array(bw * bh);
-  const inFace = (x, y) => x >= 0 && y >= 0 && x < W && y < H && lab[y * W + x] === face.id;
+  // 3. 顔の穴：顔の範囲の中で、顔の外側とつながっていない部分。
+  //    目のふちの線が髪の毛先とつながっていても目を見つけられるよう、顔の形を少し太らせて（閉じて）から調べる
+  const cr = Math.max(2, Math.round(F.w * 0.035));
+  const bw = F.w + 2 + cr * 2, bh = F.h + 2 + cr * 2, ox = F.x0 - 1 - cr, oy = F.y0 - 1 - cr, out = new Uint8Array(bw * bh);
+  const skin0 = new Uint8Array(bw * bh);
+  for (let y = 0; y < bh; y++) for (let x = 0; x < bw; x++) { const X = ox + x, Y = oy + y; if (X >= 0 && Y >= 0 && X < W && Y < H && faceIds.has(lab[Y * W + X])) skin0[y * bw + x] = 1; }
+  const closed = boxFilter(boxFilter(skin0, bw, bh, cr, 1), bw, bh, cr, 0);
+  for (let i = 0; i < closed.length; i++) closed[i] |= skin0[i];
+  const inFace = (x, y) => { const lx = x - ox, ly = y - oy; return lx >= 0 && ly >= 0 && lx < bw && ly < bh && closed[ly * bw + lx] === 1 && faceIds.has(lab[y * W + x]); };
+  const wall = (lx, ly) => closed[ly * bw + lx] === 1;
   const st = [];
-  for (let y = 0; y < bh; y++) for (let x = 0; x < bw; x++) if ((x === 0 || y === 0 || x === bw - 1 || y === bh - 1) && !inFace(ox + x, oy + y)) { out[y * bw + x] = 1; st.push(y * bw + x); }
+  for (let y = 0; y < bh; y++) for (let x = 0; x < bw; x++) if ((x === 0 || y === 0 || x === bw - 1 || y === bh - 1) && !wall(x, y)) { out[y * bw + x] = 1; st.push(y * bw + x); }
   while (st.length) {
     const i = st.pop(), x = i % bw, y = (i / bw) | 0;
     for (const [nx, ny] of [[x - 1, y], [x + 1, y], [x, y - 1], [x, y + 1]]) {
       if (nx < 0 || ny < 0 || nx >= bw || ny >= bh) continue;
-      const j = ny * bw + nx; if (out[j] || inFace(ox + nx, oy + ny)) continue;
+      const j = ny * bw + nx; if (out[j] || wall(nx, ny)) continue;
       out[j] = 1; st.push(j);
     }
+  }
+  // 太らせて閉じた所のうち、顔の外側の線（輪郭）に当たる部分は穴に入れない
+  for (let y = 0; y < bh; y++) for (let x = 0; x < bw; x++) {
+    const i = y * bw + x; if (out[i] || skin0[i]) continue;
+    let edge = false;
+    for (let d = 1; d <= cr + 1 && !edge; d++) for (const [dx, dy] of [[d, 0], [-d, 0], [0, d], [0, -d]]) { const nx = x + dx, ny = y + dy; if (nx < 0 || ny < 0 || nx >= bw || ny >= bh || out[ny * bw + nx]) { edge = true; break; } }
+    if (edge) out[i] = 1;
   }
   // 穴を8方向のつながりでまとまりにする
   const hole = new Int32Array(bw * bh), comps = [null];
@@ -3273,7 +3300,7 @@ function autoAnalyze() {
   for (const C of holes) {
     const ny = (C.cy - F.y0) / F.h, nx = (C.cx - F.cx) / F.w;
     if (C.nonLine && isBlush(...C.c) && ny > 0.4 && Math.abs(nx) > 0.12) { put('頬', C.px); C.used = 1; continue; }
-    if (ny < 0.72 && Math.abs(nx) > 0.06) { side[nx < 0 ? 'L' : 'R'].push(C); continue; }
+    if (ny < 0.72 && Math.abs(nx) > 0.06) { if (!(C.nonLine > C.n * 0.5 && isSkin(...C.c))) side[nx < 0 ? 'L' : 'R'].push(C); continue; }   // 肌色の影の切れ端は目にしない
     if (ny >= 0.5 && Math.abs(nx) < 0.3) {
       if (C.n < faceArea * 0.004 && ny < 0.75) { put('鼻', C.px); C.used = 1; }
       else { put('口', C.px); C.used = 1; }
@@ -3282,21 +3309,56 @@ function autoAnalyze() {
   for (const [s, list] of Object.entries(side)) {
     if (!list.length) continue;
     const big = list.reduce((a, c) => c.n > a.n ? c : a);
+    if (big.n < faceArea * 0.004 || (big.x1 - big.x0) < F.w * 0.08) continue;   // 小さすぎるものは目ではない（影やハイライトの切れ端）
     for (const C of list) {
       C.used = 1;
       const brow = C !== big && C.y1 < big.y0 + (big.y1 - big.y0) * 0.25 && (C.y1 - C.y0) < (big.y1 - big.y0) * 0.6;
       put((s === 'L' ? '左' : '右') + (brow ? '眉' : '目'), C.px);
     }
   }
+  // 目が顔に囲まれていない絵（目尻が髪や輪郭の線につながっている）では、
+  // 目の高さの帯の中で、顔の幅に入っている肌以外の部分から、白目やハイライトを含むまとまりを目とする
+  if (!P['左目'] || !P['右目']) {
+    const D = SP.data.data, ya = Math.round(F.y0 + F.h * 0.2), yb = Math.round(F.y0 + F.h * 0.62), dlt = Math.round(F.h * 0.15);
+    const rowMin = new Int32Array(H).fill(W), rowMax = new Int32Array(H).fill(-1);
+    for (let y = F.y0; y <= F.y1; y++) for (let x = F.x0; x <= F.x1; x++) if (faceIds.has(lab[y * W + x])) { if (x < rowMin[y]) rowMin[y] = x; if (x > rowMax[y]) rowMax[y] = x; }
+    const used = new Uint8Array(W * H); for (const k in P) for (const i of P[k]) used[i] = 1;
+    const cand = new Uint8Array(W * H);
+    for (let y = ya; y <= yb; y++) {
+      let a = W, b = -1; for (let yy = Math.max(F.y0, y - dlt); yy <= Math.min(F.y1, y + dlt); yy++) { a = Math.min(a, rowMin[yy]); b = Math.max(b, rowMax[yy]); }
+      // ごく暗い所（まつ毛や髪の線）は除く。髪の毛先とつながらないようにするため（まつ毛はあとで輪郭線として加わる）
+      for (let x = Math.max(0, a); x <= b; x++) { const i = y * W + x, k = i * 4; if (!faceIds.has(lab[i]) && !used[i] && D[k + 3] >= 8 && 0.299 * D[k] + 0.587 * D[k + 1] + 0.114 * D[k + 2] >= 55) cand[i] = 1; }
+    }
+    // 白目やハイライト（明るくて肌色でない所）を手がかりに、左右それぞれ目の範囲の箱を決める
+    const found = { L: null, R: null };
+    for (const sd of ['L', 'R']) {
+      const lights = [];
+      for (let y = ya; y <= yb; y++) for (let x = 0; x < W; x++) {
+        const i = y * W + x; if (!cand[i] || (sd === 'L') !== (x < F.cx)) continue;
+        const k = i * 4; if (0.299 * D[k] + 0.587 * D[k + 1] + 0.114 * D[k + 2] > 175 && !isSkin(D[k], D[k + 1], D[k + 2])) lights.push([x, y]);
+      }
+      if (lights.length < 3) continue;
+      const med = a => a.slice().sort((p, q) => p - q)[a.length >> 1];
+      const mx = med(lights.map(p => p[0])), my = med(lights.map(p => p[1]));
+      const near = lights.filter(([x, y]) => Math.abs(x - mx) < F.w * 0.15 && Math.abs(y - my) < F.h * 0.1);
+      let x0 = Math.min(...near.map(p => p[0])), x1 = Math.max(...near.map(p => p[0])), y0 = Math.min(...near.map(p => p[1])), y1 = Math.max(...near.map(p => p[1]));
+      const ex = Math.max(F.w * 0.06, (F.w * 0.2 - (x1 - x0)) / 2), ey = Math.max(F.h * 0.035, (F.h * 0.09 - (y1 - y0)) / 2);
+      x0 = Math.round(x0 - ex); x1 = Math.round(x1 + ex); y0 = Math.round(y0 - ey); y1 = Math.round(y1 + ey);
+      const px = [];
+      for (let y = Math.max(0, y0); y <= Math.min(H - 1, y1); y++) for (let x = Math.max(0, x0); x <= Math.min(W - 1, x1); x++) { const i = y * W + x; if (cand[i]) px.push(i); }
+      if (px.length >= faceArea * 0.004) found[sd] = { px };
+    }
+    for (const sd of ['L', 'R']) { const nm = (sd === 'L' ? '左' : '右') + '目'; if (!P[nm] && found[sd]) put(nm, found[sd].px); }
+  }
   // 顔：肌の領域＋顔の穴すべて（目などを抜いた跡も、肌で埋めた状態で顔パーツに入る）
   const facePx = [];
-  for (let y = face.y0; y <= face.y1; y++) for (let x = face.x0; x <= face.x1; x++) if (lab[y * W + x] === face.id) facePx.push(y * W + x);
+  for (let y = face.y0; y <= face.y1; y++) for (let x = face.x0; x <= face.x1; x++) if (faceIds.has(lab[y * W + x])) facePx.push(y * W + x);
   for (const C of holes) for (const i of C.px) facePx.push(i);
   put('顔', facePx);
-  const usedReg = new Set([face.id]);
+  const usedReg = new Set(faceIds);
   // 4. 髪の色：顔の上側に接している、肌色でない大きな領域の色
-  const faceSet = new Set([face.id]);
-  const around = all.filter(r => r.id !== face.id && r.n > opaque * 0.003 && !isSkin(...r.c) && r.y0 < F.cy && touches(lab, faceSet, r));
+  const faceSet = faceIds;
+  const around = all.filter(r => !faceIds.has(r.id) && r.n > opaque * 0.003 && !isSkin(...r.c) && r.y0 < F.cy && touches(lab, faceSet, r));
   around.sort((a, b) => b.n - a.n);
   const hairC = around[0] && around[0].c;
   const regPx = R => { const px = []; for (let y = R.y0; y <= R.y1; y++) for (let x = R.x0; x <= R.x1; x++) if (lab[y * W + x] === R.id) px.push(y * W + x); return px; };
@@ -3324,7 +3386,7 @@ function autoAnalyze() {
 }
 /* 画素の一覧 → マスク（小さな穴を埋め、輪郭線も含める） */
 /* 輪郭線をどこまで取り込むか。顔と前髪は、まわりの細い髪の毛先まで線として取り込まないよう少なめに */
-const lineSteps = name => name === '顔' ? 2 : name === '前髪' ? 3 : 6;
+const lineSteps = name => /顔|目/.test(name) ? 2 : name === '前髪' ? 3 : 6;
 function proposalToMask(px, name) {
   SP.mask.fill(0);
   for (const i of px) if (SP.data.data[i * 4 + 3] >= 8) SP.mask[i] = 1;
