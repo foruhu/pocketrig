@@ -1520,8 +1520,8 @@ function sampleDefs() {
     samplePart('頬', '頭/顔', 196, 372, 208, 36, x => {
       for (const cx of [30, 178]) { const g = x.createRadialGradient(cx, 18, 2, cx, 18, 28); g.addColorStop(0, 'rgba(255,120,150,.8)'); g.addColorStop(1, 'rgba(255,120,150,0)'); x.fillStyle = g; x.fillRect(cx - 30, 0, 60, 36); }
     }, { opacity: 0.8 }),
-    samplePart('左目', '頭/顔', 212, 296, 58, 74, eye),
-    samplePart('右目', '頭/顔', 330, 296, 58, 74, eye),
+    samplePart('右目', '頭/顔', 212, 296, 58, 74, eye),   // 画面の左側にあるのはキャラクターの右目
+    samplePart('左目', '頭/顔', 330, 296, 58, 74, eye),
     samplePart('口', '頭/顔', 272, 402, 56, 30, x => { x.beginPath(); x.moveTo(8, 8); x.quadraticCurveTo(28, 30, 48, 8); x.strokeStyle = LINE; x.lineWidth = 4; x.stroke(); }),
     samplePart('前髪', '頭', 136, 124, 328, 190, x => {
       x.beginPath(); x.moveTo(10, 170); x.bezierCurveTo(-4, 10, 332, 10, 318, 170);
@@ -2421,12 +2421,10 @@ function unionBox(parts) {
   b.w = b.x1 - b.x0; b.h = b.y1 - b.y0; b.cx = (b.x0 + b.x1) / 2; b.cy = (b.y0 + b.y1) / 2;
   return b;
 }
-function sideOf(p, cx) {
-  const n = p.name + ' ' + (p.group || '');
-  if (/左|_l\b|\bl\b|left/i.test(n)) return 'L';
-  if (/右|_r\b|\br\b|right/i.test(n)) return 'R';
-  const b = partBox(p); return (b.x0 + b.x1) / 2 < cx ? 'L' : 'R';
-}
+/* 左右について：パーツ名・パラメータ名の「左」「右」は、Live2Dと同じく「キャラクターから見た向き」。
+   （キャラクターの左目は、画面では右側にある）
+   プログラムの中の 'L' / 'R' は「画面の左側 / 右側」。名前に頼らず、絵の位置で判断する */
+function sideOf(p, cx) { const b = partBox(p); return (b.x0 + b.x1) / 2 < cx ? 'L' : 'R'; }
 /* パーツの各頂点について、キャンバス座標から変形量を決める関数でずれを作る */
 function offsBy(p, f) {
   const V = p.mesh.verts, o = new Float32Array(V.length), X = p.left + p.base.x, Y = p.top + p.base.y;
@@ -2458,7 +2456,7 @@ function rigPlan(cats) {
   const body = [...by('body'), ...by('neck'), ...by('neckShadow')], hair = App.parts.filter(p => HAIR_CATS.has(cats.get(p.id)));
   const plan = [];
   if (eyes.length) {
-    if (sides.size === 2) plan.push({ id: 'eyeL', name: '左目の開閉', sub: '画面の左側の目' }, { id: 'eyeR', name: '右目の開閉', sub: '画面の右側の目' });
+    if (sides.size === 2) plan.push({ id: 'eyeL', name: '左目の開閉', sub: 'キャラクターから見て左の目（画面では右側）' }, { id: 'eyeR', name: '右目の開閉', sub: 'キャラクターから見て右の目（画面では左側）' });
     else plan.push({ id: 'eyes', name: '目の開閉', sub: '両目まとめて' });
     plan.push({ id: 'gaze', name: '目玉 左右・上下', sub: '視線。目のふちは止めたまま、瞳のあたりだけ動かす' }, { id: 'smile', name: '目の笑顔', sub: '下まぶたが上がって、にっこりした目になる' });
   }
@@ -2547,8 +2545,8 @@ function autoRig(cats, want, opts = {}) {
     }
     made.push(q.name);
   };
-  if (want.has('eyeL')) blink(ensureParam('左目の開閉', 0, 1, 1), 'L');
-  if (want.has('eyeR')) blink(ensureParam('右目の開閉', 0, 1, 1), 'R');
+  if (want.has('eyeL')) blink(ensureParam('左目の開閉', 0, 1, 1), 'R');   // キャラクターの左目＝画面の右側
+  if (want.has('eyeR')) blink(ensureParam('右目の開閉', 0, 1, 1), 'L');
   if (want.has('eyes')) blink(ensureParam('目の開閉', 0, 1, 1), null);
 
   // ---- 目玉（視線） ----
@@ -2697,7 +2695,7 @@ function autoRig(cats, want, opts = {}) {
     // 以前の1本だけの「髪揺れ」は、作り直すときに取り除く
     const old = App.params.find(x => x.name === '髪揺れ');
     if (old) { clearOld(old); App.params = App.params.filter(x => x !== old); App.physics = App.physics.filter(g => g.out !== old.id && g.inp !== old.id); }
-    const hb = unionBox(R.hair), BAND = [['左', 0.5, 2.8, 1.0], ['中', 0.62, 2.4, 1.1], ['右', 0.45, 3.3, 0.9]];
+    const hb = unionBox(R.hair), BAND = [['右', 0.5, 2.8, 1.0], ['中', 0.62, 2.4, 1.1], ['左', 0.45, 3.3, 0.9]];   // 画面の左から。名前はキャラクターから見た向き
     const centers = BAND.map((_, k) => hb.x0 + hb.w * (k + 0.5) / BAND.length), sig = hb.w / BAND.length * 0.6;
     const wOf = x => { const g = centers.map(c => Math.exp(-((x - c) ** 2) / (2 * sig * sig))), t = g.reduce((a, b) => a + b, 0) || 1; return g.map(v => v / t); };
     const inp = App.params.find(x => x.name === '顔の向き 左右') || App.params.find(x => /向き/.test(x.name));
@@ -2736,10 +2734,10 @@ const SPLIT_STEPS = [
   { name: 'アホ毛', hint: '頭のてっぺんで跳ねている毛', fill: false, opt: true },
   { name: '前髪', hint: 'おでこにかかる髪をまとめて', fill: true },
   { name: '横髪', hint: '顔の横に垂れる髪（左右まとめてOK）', fill: true, opt: true },
-  { name: '左眉', hint: '画面の左側の眉', fill: true },
-  { name: '右眉', hint: '画面の右側の眉', fill: true },
-  { name: '左目', hint: '画面の左側の目。白目・瞳・まつ毛まで目全体', fill: true },
-  { name: '右目', hint: '画面の右側の目。白目・瞳・まつ毛まで目全体', fill: true },
+  { name: '左眉', hint: 'キャラクターから見て左の眉（画面では右側）', fill: true },
+  { name: '右眉', hint: 'キャラクターから見て右の眉（画面では左側）', fill: true },
+  { name: '左目', hint: 'キャラクターから見て左の目（画面では右側）。白目・瞳・まつ毛まで目全体', fill: true },
+  { name: '右目', hint: 'キャラクターから見て右の目（画面では左側）。白目・瞳・まつ毛まで目全体', fill: true },
   { name: '鼻', hint: '鼻の線や影', fill: true, opt: true },
   { name: '口', hint: '口の線・口の中', fill: true },
   { name: '頬', hint: '頬の赤み（あれば）', fill: true, opt: true },
@@ -3480,7 +3478,7 @@ function autoAnalyze() {
     for (const C of list) {
       C.used = 1;
       const brow = C !== big && C.y1 < big.y0 + (big.y1 - big.y0) * 0.25 && (C.y1 - C.y0) < (big.y1 - big.y0) * 0.6;
-      put((s === 'L' ? '左' : '右') + (brow ? '眉' : '目'), C.px);
+      put((s === 'L' ? '右' : '左') + (brow ? '眉' : '目'), C.px);   // 画面の左側にあるのはキャラクターの右
     }
   }
   // 目が顔に囲まれていない絵（目尻が髪や輪郭の線につながっている）では、
@@ -3515,7 +3513,7 @@ function autoAnalyze() {
       for (let y = Math.max(0, y0); y <= Math.min(H - 1, y1); y++) for (let x = Math.max(0, x0); x <= Math.min(W - 1, x1); x++) { const i = y * W + x; if (cand[i]) px.push(i); }
       if (px.length >= faceArea * 0.004) found[sd] = { px };
     }
-    for (const sd of ['L', 'R']) { const nm = (sd === 'L' ? '左' : '右') + '目'; if (!P[nm] && found[sd]) put(nm, found[sd].px); }
+    for (const sd of ['L', 'R']) { const nm = (sd === 'L' ? '右' : '左') + '目'; if (!P[nm] && found[sd]) put(nm, found[sd].px); }
   }
   // 顔：肌の領域＋顔の穴すべて（目などを抜いた跡も、肌で埋めた状態で顔パーツに入る）
   const facePx = [];
