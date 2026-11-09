@@ -2971,7 +2971,7 @@ function pushPull(R, G, B, Wt, w, h) {
 function spCut() {
   if ($('#spFill').checked) spLineMap();                // 穴埋めで線画を避けるため、先に線を調べておく
   const st = SP.steps[SP.cur], W = SP.W, H = SP.H, M = SP.mask, D = SP.data.data;
-  if (SP.taken) for (let k = 0; k < M.length; k++) if (M[k]) SP.taken[k] = 1;   // 自動の範囲が次のパーツと重ならないように覚えておく
+  if (SP.taken && st.name !== '首の影') for (let k = 0; k < M.length; k++) if (M[k]) SP.taken[k] = 1;   // 自動の範囲が次のパーツと重ならないように覚えておく
   let x0 = W, y0 = H, x1 = -1, y1 = -1;
   for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (M[y * W + x]) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
   if (x1 < 0) return toast('まだ塗られていません。指でなぞってください');
@@ -3087,8 +3087,9 @@ function spFinish() {
   if (!SP.cuts.length) { closeSplit(); return toast('切り出したパーツがないので、そのまま閉じました'); }
   const src = SP.src, idx = App.parts.indexOf(src);
   const rest = makePart({ canvas: SP.work, left: src.left, top: src.top, name: SP.remName || '残り', group: src.group, x: src.base.x, y: src.base.y, opacity: src.base.opacity });
-  const cuts = SP.cuts.map(k => makePart({ canvas: k.canvas, left: src.left + k.x, top: src.top + k.y, name: k.name, group: src.group, x: src.base.x, y: src.base.y, opacity: src.base.opacity }));
-  const added = [rest, ...cuts.reverse()].filter(Boolean);       // 最初に切った（手前の）パーツほど上に
+  const mk = k => makePart({ canvas: k.canvas, left: src.left + k.x, top: src.top + k.y, name: k.name, group: src.group, x: src.base.x, y: src.base.y, opacity: src.base.opacity });
+  const unders = SP.cuts.filter(k => k.under).map(mk), cuts = SP.cuts.filter(k => !k.under).map(mk);
+  const added = [...unders, rest, ...cuts.reverse()].filter(Boolean);   // 下地はいちばん奥、最初に切った（手前の）パーツほど上に
   App.parts.splice(idx, 1, ...added);
   App.sel = null;
   closeSplit();
@@ -3489,7 +3490,7 @@ function autoAnalyze() {
     }
     if (sh.length && sh.length < np.length * 0.85) {
       const isSh = new Uint8Array(W * H); for (const i of sh) isSh[i] = 1;
-      P['首'] = np.filter(i => !isSh[i]); put('首の影', sh);
+      put('首の影', sh);   // 首には影の所も残す（影を切り抜いたあと、首の肌の色で塗り足した状態で首パーツに入る）
     }
   }
   // 髪と似た色でも、頭から離れた下の方にあるもの（黒いズボンなど）は体に入れる
@@ -3626,8 +3627,45 @@ async function spAutoAll() {
       await tick();
     }
     spMergeFragments();
+    spBodyUnderlay();
   } finally { loading(false); }
   spFinish();
+}
+/* 体の下地（塗り足し）：襟や肩にかかっている髪の下に、体の色を塗り足したパーツを作っていちばん奥に置く。
+   髪が揺れたり頭が動いたりしても、その下から背景が見えないようにするため */
+function spBodyUnderlay() {
+  const W = SP.W, H = SP.H, D = SP.data.data, bodyCuts = SP.cuts.filter(c => c.name === '体' || c.name === '首');
+  if (!bodyCuts.length) return;
+  const B = new Uint8Array(W * H), cr = new Float32Array(W * H), cg = new Float32Array(W * H), cb = new Float32Array(W * H);
+  for (const c of bodyCuts) {
+    const cw = c.canvas.width, chh = c.canvas.height, d = c.canvas.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, cw, chh).data;
+    for (let y = 0; y < chh; y++) for (let x = 0; x < cw; x++) { const k = (y * cw + x) * 4; if (d[k + 3] < 200) continue; const i = (c.y + y) * W + c.x + x; B[i] = 1; cr[i] = d[k]; cg[i] = d[k + 1]; cb[i] = d[k + 2]; }
+  }
+  const fc = SP.cuts.find(c => c.name === '顔'), fw = fc ? fc.canvas.width : W * 0.2;
+  const yMin = fc ? fc.y + fc.canvas.height * 0.85 : 0, r = Math.max(4, Math.round(fw * 0.12));
+  const near = boxFilter(B, W, H, r, 1), U = new Uint8Array(W * H);
+  let n = 0, x0 = W, y0 = H, x1 = -1, y1 = -1;
+  for (let y = Math.max(0, Math.floor(yMin)); y < H; y++) for (let x = 0; x < W; x++) {
+    const i = y * W + x; if (!near[i] || B[i] || D[i * 4 + 3] < 8) continue;
+    U[i] = 1; n++; if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
+  }
+  if (n < 30) return;
+  // 体の色（線を除く）を、まわりからなめらかに流し込んで塗る
+  x0 = Math.max(0, x0 - r); y0 = Math.max(0, y0 - r); x1 = Math.min(W - 1, x1 + r); y1 = Math.min(H - 1, y1 + r);
+  const w = x1 - x0 + 1, h = y1 - y0 + 1, Rr = new Float32Array(w * h), Gg = new Float32Array(w * h), Bb = new Float32Array(w * h), Wt = new Float32Array(w * h);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const i = (y0 + y) * W + x0 + x, j = y * w + x;
+    if (B[i] && 0.299 * cr[i] + 0.587 * cg[i] + 0.114 * cb[i] > 45) { Rr[j] = cr[i]; Gg[j] = cg[i]; Bb[j] = cb[i]; Wt[j] = 1; }
+  }
+  pushPull(Rr, Gg, Bb, Wt, w, h);
+  const cv = mkCanvas(w, h), ctx = cv.getContext('2d'), img = ctx.createImageData(w, h);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const i = (y0 + y) * W + x0 + x, j = y * w + x, k = j * 4;
+    if (!U[i] && !B[i]) continue;
+    img.data[k] = Rr[j]; img.data[k + 1] = Gg[j]; img.data[k + 2] = Bb[j]; img.data[k + 3] = 255;
+  }
+  ctx.putImageData(img, 0, 0);
+  SP.cuts.push({ name: '体の下地', canvas: cv, x: x0, y: y0, under: true });
 }
 /* 切り抜いたあとに残った小さな切れ端（線の切れ端・取り残した色など）を、いちばん近いパーツに入れる。
    残しておくと、体などを動かしたときにその場に取り残されて目立つため */
