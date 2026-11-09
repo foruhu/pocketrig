@@ -263,6 +263,7 @@ nav.bottom > button{min-width:52px;padding:0 10px}
           <label class="f">回転<span class="v" id="pRotV"></span><input id="pRot" type="range" min="-180" max="180" step="1"></label>
           <label class="f">拡大<span class="v" id="pScaleV"></span><input id="pScale" type="range" min="0.1" max="3" step="0.01"></label>
           <label class="f">不透明度<span class="v" id="pOpV"></span><input id="pOp" type="range" min="0" max="1" step="0.01"></label>
+          <label class="f">重ね方<select id="pBlend"><option value="norm">通常</option><option value="mul ">乗算（影に）</option><option value="lddg">加算（光に）</option></select></label>
           <div class="btnrow"><button id="pVis">非表示にする</button><button id="pUp">前へ</button><button id="pDown">後ろへ</button></div>
           <div class="btnrow"><button id="pReset">配置をリセット</button><button id="pDel" class="danger">削除</button></div>
           <div class="btnrow"><button id="pSplit">このパーツをさらに分ける（目・口など）</button></div>
@@ -582,7 +583,7 @@ function psdToDefs(psd) {
       canvas: rgbaToCanvas(l.rgba, l.w, l.h), left: l.left, top: l.top,
       name: l.name || 'レイヤー', group: it.group, visible: it.visible, opacity: it.opacity, blend: l.blend
     };
-    if (l.blend !== 'norm' && l.blend !== 'pass') info.blends++;
+    if (!['norm', 'pass', 'mul ', 'lddg', 'lLit'].includes(l.blend)) info.blends++;   // 乗算・加算はそのまま使える
     defs.push(base);
   }
   return { defs, info };
@@ -1026,16 +1027,26 @@ function uploadPart(p) {
   }
   gl.bufferData(gl.ARRAY_BUFFER, arr, gl.DYNAMIC_DRAW);
 }
+/* Live2D と同じく「通常」「乗算」「加算」の3つで重ねる（ほかの合成モードは通常として描く） */
+const blendKind = b => b === 'mul ' ? 'mul' : (b === 'lddg' || b === 'lLit') ? 'add' : 'norm';
+function setBlend(kind) {
+  if (kind === 'mul') gl.blendFuncSeparate(gl.DST_COLOR, gl.ONE_MINUS_SRC_ALPHA, gl.ZERO, gl.ONE);
+  else if (kind === 'add') gl.blendFuncSeparate(gl.ONE, gl.ONE, gl.ZERO, gl.ONE);
+  else gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+}
 function drawParts() {
+  let cur = 'norm';
   for (const p of App.parts) {
     if (!p.visible || p.opacity <= 0) continue;
-    const o = p.opacity;
+    const o = p.opacity, bk = blendKind(p.blend);
+    if (bk !== cur) { setBlend(bk); cur = bk; }
     uploadPart(p);
     gl.bindTexture(gl.TEXTURE_2D, ensureTex(p));
     gl.uniform4fv(uCol, [o, o, o, o]);
     gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, p.mesh.tris, gl.DYNAMIC_DRAW);
     gl.drawElements(gl.TRIANGLES, p.mesh.tris.length, gl.UNSIGNED_SHORT, 0);
   }
+  if (cur !== 'norm') setBlend('norm');
 }
 /* 変形込みで書き出すため、GPUで書き出し用の画像を描く */
 function renderToPixels() {
@@ -1268,6 +1279,7 @@ function updateProps(live) {
   set('#pScale', p.scale); $('#pScaleV').textContent = Math.round(p.scale * 100) + '%';
   set('#pOp', p.opacity); $('#pOpV').textContent = Math.round(p.opacity * 100) + '%';
   $('#pVis').textContent = p.visible ? '非表示にする' : '表示する';
+  $('#pBlend').value = { mul: 'mul ', add: 'lddg' }[blendKind(p.blend)] || 'norm';
   const i = App.parts.indexOf(p);
   $('#pUp').disabled = i >= App.parts.length - 1; $('#pDown').disabled = i <= 0;
   $('#mInfo').textContent = `頂点${vcount(p)} ・ 三角形${p.mesh.tris.length / 3}${p.offs ? ' ・ 変形あり' : ''}`;
@@ -1311,6 +1323,7 @@ const bindNum = (id, key, conv = Number) => {
 bindNum('#pX', 'x'); bindNum('#pY', 'y'); bindNum('#pRot', 'rot'); bindNum('#pScale', 'scale'); bindNum('#pOp', 'opacity');
 $('#pName').addEventListener('input', e => { if (App.sel) App.sel.name = e.target.value; });
 $('#pName').addEventListener('change', () => { if (App.sel) { commit(); renderList(); } });
+$('#pBlend').onchange = e => { const p = App.sel; if (!p) return; p.blend = e.target.value; commit(); requestRender(); };
 $('#pVis').onclick = () => { const p = App.sel; if (!p) return; p.visible = !p.visible; commit(); renderList(); updateProps(); requestRender(); };
 function moveOrder(dir) {
   const p = App.sel; if (!p) return; const i = App.parts.indexOf(p), j = i + dir;
@@ -1466,7 +1479,7 @@ async function importPSD(file) {
   if (psd.merged) notes.push('レイヤー情報が無いため1枚の画像として開きました');
   if (psd.scaleK < 1) notes.push(`大きいので${Math.round(psd.scaleK * 100)}%に縮めて開きました`);
   if (info.clipped) notes.push(`クリッピング${info.clipped}枚を下のパーツに合成`);
-  if (info.blends) notes.push(`乗算などの合成モード${info.blends}枚は通常表示`);
+  if (info.blends) notes.push(`乗算・加算以外の合成モード${info.blends}枚は通常表示`);
   toast(`${App.parts.length}パーツを読み込みました` + (notes.length ? '\n' + notes.join('・') : ''), 4500);
   if (App.parts.length === 1) offerSplit();
 }
@@ -1554,7 +1567,7 @@ function psdLayerRecord(rec, info) {   // info: {top,left,bottom,right,name,opac
   rec.i32(info.top); rec.i32(info.left); rec.i32(info.bottom); rec.i32(info.right);
   rec.u16(info.chans.length);
   for (const c of info.chans) { rec.i16(c.id); rec.u32(c.data.length); }
-  rec.str('8BIM'); rec.str('norm'); rec.u8(info.opacity); rec.u8(0); rec.u8(info.hidden ? 2 : 0); rec.u8(0);
+  rec.str('8BIM'); rec.str(info.blend || 'norm'); rec.u8(info.opacity); rec.u8(0); rec.u8(info.hidden ? 2 : 0); rec.u8(0);
   const ex = new ByteWriter();
   ex.u32(0); ex.u32(0);                                     // レイヤーマスク・ブレンド条件はなし
   const ascii = [...info.name].map(c => c.charCodeAt(0) < 128 ? c.charCodeAt(0) : 63).slice(0, 255);
@@ -1591,7 +1604,7 @@ async function exportPSD() {
         const planes = [new Uint8Array(n), new Uint8Array(n), new Uint8Array(n), new Uint8Array(n)];
         for (let i = 0; i < n; i++) { planes[0][i] = d[i * 4 + 3]; planes[1][i] = d[i * 4]; planes[2][i] = d[i * 4 + 1]; planes[3][i] = d[i * 4 + 2]; }
         const chans = [-1, 0, 1, 2].map((id, k) => ({ id, data: rleChannel(planes[k], p.w, p.h) }));
-        psdLayerRecord(recs, { top: y0, left: x0, bottom: y0 + p.h, right: x0 + p.w, name: p.name, opacity: Math.round(clamp(p.base.opacity, 0, 1) * 255), hidden: !p.visible, chans });
+        psdLayerRecord(recs, { top: y0, left: x0, bottom: y0 + p.h, right: x0 + p.w, name: p.name, blend: { mul: 'mul ', add: 'lddg' }[blendKind(p.blend)] || 'norm', opacity: Math.round(clamp(p.base.opacity, 0, 1) * 255), hidden: !p.visible, chans });
         for (const c of chans) datas.push(c.data);
         count++;
         if (count % 4 === 0) { loading(true, `PSDを作っています… ${count}/${App.parts.length}`); await tick(); }
