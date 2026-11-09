@@ -1570,14 +1570,17 @@ async function exportPSD() {
   try {
     const W = App.doc.w, H = App.doc.h;
     // 書き出す順（奥→手前）に、レイヤーとグループの区切りを並べる
+    // グループは「左目 / 左瞳」のように入れ子にできる。奥のパーツから順に、グループの出入りを並べる
     const groupOf = p => { if (p.group) return p.group; let c = guessCat(p); if (c === 'iris') c = 'eye'; return (CAT_LIST.find(([k]) => k === c) || [, ''])[1]; };   // 瞳は目と同じグループに
-    const items = []; let cur = null;
+    const items = []; let cur = [];
     for (const p of App.parts) {
-      const g = groupOf(p);
-      if (g !== cur) { if (cur) items.push({ type: 'open', name: cur }); if (g) items.push({ type: 'close' }); cur = g; }
+      const path = String(groupOf(p) || '').split(' / ').map(t => t.trim()).filter(Boolean);
+      let k = 0; while (k < cur.length && k < path.length && cur[k] === path[k]) k++;
+      while (cur.length > k) items.push({ type: 'open', name: cur.pop() });   // PSDでは、グループの見出しが中身より手前（上）に来る
+      for (; k < path.length; k++) { items.push({ type: 'close' }); cur.push(path[k]); }
       items.push({ type: 'layer', p });
     }
-    if (cur) items.push({ type: 'open', name: cur });
+    while (cur.length) items.push({ type: 'open', name: cur.pop() });
     // 奥から順にグループを閉じる・開く：PSDでは「グループの終わり」の区切りがグループの中身より奥に置かれる
     const recs = new ByteWriter(), datas = [];
     let count = 0;
@@ -2693,9 +2696,14 @@ function autoRig(cats, want, opts = {}) {
     clearOld(q);
     const eyes = R.eyes.filter(p => !sd || sideBox(p, sd, cxF)), b = boxOf(eyes, sd); if (!b) return;
     const yc = b.y0 + b.h * 0.62;
+    // 白目・瞳・ハイライトが別のパーツなら、それらは線になるまで完全につぶし、まつ毛は少し厚みを残す（閉じた目の線になる）
+    const split = eyes.some(p => /白目|sclera/i.test(p.name));
+    // 分かれた目では、白目・瞳・ハイライトを線になるまで完全につぶす（まつ毛より外にはみ出さない）
+    const isInner = p => /白目|sclera/i.test(p.name) || cat(p) === 'iris' || cat(p) === 'highlight';
+    const move = (p, x, y) => (yc - y) * (split && isInner(p) ? 1 : 0.92);
     for (const p of eyes) {
       needMesh(p);
-      const k = { offs: offsBy(p, (x, y) => onSide(x, sd) ? [0, (yc - y) * 0.92] : [0, 0]) };
+      const k = { offs: offsBy(p, (x, y) => onSide(x, sd) ? [0, move(p, x, y)] : [0, 0]) };
       if (cat(p) === 'highlight' && onlyOn(p, sd)) k.opacity = -1;
       bindKeys(p, q, { 0: KF(k) });
     }
@@ -3369,7 +3377,7 @@ function pushPull(R, G, B, Wt, w, h) {
 function spCut() {
   if ($('#spFill').checked) spLineMap();                // 穴埋めで線画を避けるため、先に線を調べておく
   const st = SP.steps[SP.cur], W = SP.W, H = SP.H, M = SP.mask, D = SP.data.data;
-  if (SP.taken && st.name !== '首の影' && !/瞳/.test(st.name)) for (let k = 0; k < M.length; k++) if (M[k]) SP.taken[k] = 1;   // 自動の範囲が次のパーツと重ならないように覚えておく
+  if (SP.taken && st.name !== '首の影' && !/瞳|ハイライト/.test(st.name)) for (let k = 0; k < M.length; k++) if (M[k]) SP.taken[k] = 1;   // 自動の範囲が次のパーツと重ならないように覚えておく
   let x0 = W, y0 = H, x1 = -1, y1 = -1;
   for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (M[y * W + x]) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
   if (x1 < 0) return toast('まだ塗られていません。指でなぞってください');
@@ -3482,12 +3490,26 @@ function spSetTool(t) {
   else { $('#spSizeL').textContent = '太さ'; sl.min = 6; sl.max = 140; sl.value = SP.size; }
 }
 /* 完了：元のパーツを置き換える */
+/* 切り出したパーツを、プロのパーツ分けPSDと同じようなグループに入れる（髪の毛・眉毛・左目/左瞳・顔・上半身など） */
+function autoGroupOf(nm) {
+  let m;
+  if (/^(アホ毛|前髪|横髪|後ろ髪)$/.test(nm)) return '髪の毛';
+  if (/^[左右]眉$/.test(nm)) return '眉毛';
+  if ((m = nm.match(/^([左右])(上まつ毛|下まつ毛|まつ毛)$/))) return `${m[1]}目 / ${m[1]}まつ毛`;
+  if ((m = nm.match(/^([左右])(ハイライト|瞳)$/))) return `${m[1]}目 / ${m[1]}瞳`;
+  if ((m = nm.match(/^([左右])白目$/))) return `${m[1]}目 / ${m[1]}白目`;
+  if ((m = nm.match(/^([左右])目$/))) return `${m[1]}目`;
+  if (/^(鼻|口|頬|耳|顔)$/.test(nm)) return '顔';
+  if (/^(首の影|首|体|体の下地)$/.test(nm)) return '上半身';
+  return '';
+}
 function spFinish() {
   if (SP.mask.some(v => v) && !confirm('塗った範囲はまだ切り出していません。捨てて完了しますか？')) return;
   if (!SP.cuts.length) { closeSplit(); return toast('切り出したパーツがないので、そのまま閉じました'); }
   const src = SP.src, idx = App.parts.indexOf(src);
-  const rest = makePart({ canvas: SP.work, left: src.left, top: src.top, name: SP.remName || '残り', group: src.group, x: src.base.x, y: src.base.y, opacity: src.base.opacity });
-  const mk = k => makePart({ canvas: k.canvas, left: src.left + k.x, top: src.top + k.y, name: k.name, group: src.group, x: src.base.x, y: src.base.y, opacity: src.base.opacity });
+  const grp = nm => [src.group, autoGroupOf(nm)].filter(Boolean).join(' / ');
+  const rest = makePart({ canvas: SP.work, left: src.left, top: src.top, name: SP.remName || '残り', group: grp(SP.remName || '残り'), x: src.base.x, y: src.base.y, opacity: src.base.opacity });
+  const mk = k => makePart({ canvas: k.canvas, left: src.left + k.x, top: src.top + k.y, name: k.name, group: grp(k.name), x: src.base.x, y: src.base.y, opacity: src.base.opacity });
   const unders = SP.cuts.filter(k => k.under).map(mk), cuts = SP.cuts.filter(k => !k.under).map(mk);
   const added = [...unders, rest, ...cuts.reverse()].filter(Boolean);   // 下地はいちばん奥、最初に切った（手前の）パーツほど上に
   App.parts.splice(idx, 1, ...added);
@@ -3843,7 +3865,7 @@ function autoAnalyze() {
   for (const sd of ['左', '右']) {
     const px = P[sd + '目']; if (!px) continue;
     const sub = splitEyeParts(px, W);
-    if (sub) { delete P[sd + '目']; put(sd + 'まつ毛', sub.lash); put(sd + '瞳', sub.iris); put(sd + '白目', sub.white); }
+    if (sub) { delete P[sd + '目']; put(sd + '上まつ毛', sub.lash); put(sd + '下まつ毛', sub.lashLo); put(sd + 'ハイライト', sub.hi); put(sd + '瞳', sub.iris); put(sd + '白目', sub.white); }
   }
   // 顔：肌の領域＋顔の穴すべて（目などを抜いた跡も、肌で埋めた状態で顔パーツに入る）
   const facePx = [];
@@ -3924,7 +3946,7 @@ function splitEyeParts(px0, W) {
   if (skinN > n * 0.25) return null;
   const h = y1 - y0 + 1, lum = i => 0.299 * D[i * 4] + 0.587 * D[i * 4 + 1] + 0.114 * D[i * 4 + 2];
   const sat = i => { const r = D[i * 4], g = D[i * 4 + 1], b = D[i * 4 + 2], mx = Math.max(r, g, b); return mx ? (mx - Math.min(r, g, b)) / mx : 0; };
-  const lashes = new Set(), dark = i => lum(i) < 75;
+  const lashes = new Set(), lower = new Set(), dark = i => lum(i) < 75;
   // 上まつ毛：各列の上から、目の範囲に入ってすぐの暗い連なり
   for (let x = x0; x <= x1; x++) {
     let y = y0; while (y <= y1 && !inM.has(y * W + x)) y++;
@@ -3934,7 +3956,7 @@ function splitEyeParts(px0, W) {
     let yb = y1; while (yb >= y0 && !inM.has(yb * W + x)) yb--;
     for (let s = 0; s < 3 && yb >= y0 && inM.has(yb * W + x) && !dark(yb * W + x); s++) yb--;
     k = 0; const tmp = []; while (yb >= y0 && inM.has(yb * W + x) && dark(yb * W + x) && k < h * 0.15) { tmp.push(yb * W + x); yb--; k++; }
-    if (k < h * 0.15) for (const i of tmp) lashes.add(i);
+    if (k < h * 0.15) for (const i of tmp) { lashes.add(i); lower.add(i); }
   }
   // 上まつ毛につながる暗い所（上半分）もまつ毛に
   const st = [...lashes];
@@ -3961,11 +3983,18 @@ function splitEyeParts(px0, W) {
   if (px.length - lashes.size - iris.size < n * 0.06 || lashes.size < n * 0.03) return null;
   // 白目は瞳の後ろも含めた「目玉全体」にする（瞳を動かしても、その下に白目がある）
   const white = px.filter(i => !lashes.has(i));   // うまく分かれないときは目を1つのまま
-  return { lash: [...lashes], iris: [...iris], white };
+  // ハイライト：瞳の中の白く明るい点（瞳と別にすると、まばたきで消したり、視線より少し大きく動かしたりできる）
+  let hi = []; for (const i of iris) if (lum(i) > 205 && sat(i) < 0.25) hi.push(i);
+  if (hi.length < iris.size * 0.01 || hi.length > iris.size * 0.45) hi = [];
+  // 下まつ毛：上まつ毛とつながっていない、下のふちの線（まばたきでは上まつ毛と別に動く）
+  const lowArr = [...lower].filter(i => ((i / W) | 0) > y0 + h * 0.5);
+  const lowOK = lowArr.length >= lashes.size * 0.05 && lowArr.length <= lashes.size * 0.5;
+  const low = new Set(lowOK ? lowArr : []);
+  return { lash: [...lashes].filter(i => !low.has(i)), lashLo: [...low], hi, iris: [...iris], white };
 }
 /* 画素の一覧 → マスク（小さな穴を埋め、輪郭線も含める） */
 /* 輪郭線をどこまで取り込むか。顔と前髪は、まわりの細い髪の毛先まで線として取り込まないよう少なめに */
-const lineSteps = name => /瞳|白目/.test(name) ? 0 : name === '首の影' ? 1 : /顔|目|まつ毛/.test(name) ? 2 : name === '前髪' ? 3 : 6;
+const lineSteps = name => /瞳|白目|ハイライト/.test(name) ? 0 : name === '首の影' ? 1 : /顔|目|まつ毛/.test(name) ? 2 : name === '前髪' ? 3 : 6;
 function proposalToMask(px, name) {
   SP.mask.fill(0);
   for (const i of px) if (SP.data.data[i * 4 + 3] >= 8) SP.mask[i] = 1;
@@ -4072,8 +4101,10 @@ async function spAuto() {
   for (const sd of ['左', '右']) {
     const k = SP.steps.findIndex(s => s.name === sd + '目');
     if (k >= 0 && P && P[sd + '瞳']) SP.steps.splice(k, 1,
-      { name: sd + 'まつ毛', hint: '目のふちの線', fill: true, opt: true, done: false },
-      { name: sd + '瞳', hint: '黒目（ハイライト込み）', fill: true, opt: true, done: false },
+      { name: sd + '上まつ毛', hint: '目の上のふちの線', fill: true, opt: true, done: false },
+      { name: sd + '下まつ毛', hint: '目の下のふちの線', fill: true, opt: true, done: false },
+      { name: sd + 'ハイライト', hint: '瞳の中の白い光', fill: true, opt: true, done: false },
+      { name: sd + '瞳', hint: '黒目', fill: true, opt: true, done: false },
       { name: sd + '白目', hint: '白目', fill: true, opt: true, done: false });
   }
   const names = P ? SP.steps.filter(s => !s.remainder && !s.done && P[s.name]).map(s => s.name) : [];
