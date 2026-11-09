@@ -3085,6 +3085,7 @@ const SPLIT_STEPS = [
   { name: '口', hint: '口の線・口の中', fill: true },
   { name: '頬', hint: '頬の赤み（あれば）', fill: true, opt: true },
   { name: '耳', hint: '見えている耳（あれば）', fill: false, opt: true },
+  { name: '顔の輪郭線', hint: 'あごのラインなど、顔のふちの線', fill: true, opt: true },
   { name: '顔', hint: '肌の部分を輪郭の線まで', fill: true },
   { name: '首の影', hint: 'あごの下の首の影（あれば）', fill: true, fillMode: 'ring', opt: true },   // 後ろは首の肌の色で埋める
   { name: '首', hint: '首の肌の部分', fill: true, fillMode: 'local' },   // 首の後ろは髪や服なので、場所ごとに近くの色で埋める
@@ -3106,6 +3107,7 @@ function openSplit() {
   if (!App.doc) return toast('まだ何も開いていません');
   const src = App.sel || [...App.parts].sort((a, b) => b.w * b.h - a.w * a.h)[0];
   if (!src) return;
+  SP.cheek = null;
   if ((Object.keys(src.binds).length || hasAnyOffs(src)) && !confirm(`「${src.name}」のパラメータや変形の設定は、分けたあとのパーツには引き継がれません。続けますか？`)) return;
   stopPlay(); stopMotion();
   const W = src.w, H = src.h, work = mkCanvas(W, H), wctx = work.getContext('2d', { willReadFrequently: true });
@@ -3390,7 +3392,7 @@ function pushPull(R, G, B, Wt, w, h) {
 function spCut() {
   if ($('#spFill').checked) spLineMap();                // 穴埋めで線画を避けるため、先に線を調べておく
   const st = SP.steps[SP.cur], W = SP.W, H = SP.H, M = SP.mask, D = SP.data.data;
-  if (SP.taken && st.name !== '首の影' && !/瞳|ハイライト/.test(st.name)) for (let k = 0; k < M.length; k++) if (M[k]) SP.taken[k] = 1;   // 自動の範囲が次のパーツと重ならないように覚えておく
+  if (SP.taken && st.name !== '首の影' && !/瞳|ハイライト|輪郭線/.test(st.name) && !(st.name === '頬' && SP.cheek)) for (let k = 0; k < M.length; k++) if (M[k]) SP.taken[k] = 1;   // 自動の範囲が次のパーツと重ならないように覚えておく
   let x0 = W, y0 = H, x1 = -1, y1 = -1;
   for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (M[y * W + x]) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
   if (x1 < 0) return toast('まだ塗られていません。指でなぞってください');
@@ -3398,6 +3400,7 @@ function spCut() {
   // 切り口のまわり1pxも、元の絵の色のままパーツに含める。
   //   後ろは埋めた色に変わるので、ここをパーツで覆っておかないと、動かす前から切り口に色のふちが見えてしまう
   const soft = i => { const x = i % W, y = (i / W) | 0; let s = 0, n = 0; for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) { const xx = x + dx, yy = y + dy; if (xx < 0 || yy < 0 || xx >= W || yy >= H) continue; s += M[yy * W + xx]; n++; } return s / n; };
+  if (st.name === '頬' && SP.cheek) return spCutCheek(st, x0, y0, x1, y1);
   const cw = x1 - x0 + 1, ch = y1 - y0 + 1, part = mkCanvas(cw, ch), pctx = part.getContext('2d');
   const pimg = pctx.createImageData(cw, ch);
   for (let y = 0; y < ch; y++) for (let x = 0; x < cw; x++) {
@@ -3439,7 +3442,7 @@ function spCut() {
     } else {
       const ring = boxFilter(hole, fw, fh, 6, 1), hist = new Map();
       // まつ毛・白目・目の跡は、肌の色だけで埋める（白目の白で埋めると、目を閉じたときに白く残るため）
-      const skinOnly = /まつ毛|白目|目$/.test(st.name) && !/瞳/.test(st.name);
+      const skinOnly = /まつ毛|白目|目$|輪郭線/.test(st.name) && !/瞳/.test(st.name);
       for (let j = 0; j < hole.length; j++) if (ring[j] && Wt[j] && (!skinOnly || isSkin(R[j], Gc[j], B[j]))) { const key = ((R[j] >> 4) << 8) | ((Gc[j] >> 4) << 4) | (B[j] >> 4); hist.set(key, (hist.get(key) || 0) + 1); }
       let best = -1, bn = 0; for (const [k, v] of hist) if (v > bn) { bn = v; best = k; }
       if (best >= 0) {
@@ -3466,6 +3469,37 @@ function spCut() {
   M.fill(0); SP.mctx.clearRect(0, 0, W, H); SP.hist = [];
   SP.ver++; aiReset();                                   // 絵が変わったのでAIは読み取り直す
   toast(`「${st.name}」を切り出しました`, 1500);
+  spNext();
+}
+/* 頬のぼかしの赤みを、薄さ（不透明度）ごと取り出す。
+   その画素の色＝肌の色＋薄さ×（赤みの色−肌の色）とみて、赤みの色・薄さを求め、残りの絵からは赤みだけを引く */
+function spCutCheek(st, x0, y0, x1, y1) {
+  const W = SP.W, H = SP.H, M = SP.mask, D = SP.data.data, { skin: s, blush: b } = SP.cheek;
+  const d = [b[0] - s[0], b[1] - s[1], b[2] - s[2]], dd = d[0] ** 2 + d[1] ** 2 + d[2] ** 2;
+  const r = Math.max(3, Math.round((y1 - y0) * 0.25));         // ぼかしのすそも拾うよう少し広めに
+  x0 = Math.max(0, x0 - r); y0 = Math.max(0, y0 - r); x1 = Math.min(W - 1, x1 + r); y1 = Math.min(H - 1, y1 + r);
+  const cw = x1 - x0 + 1, ch = y1 - y0 + 1, sub = new Uint8Array(cw * ch);
+  for (let y = 0; y < ch; y++) for (let x = 0; x < cw; x++) sub[y * cw + x] = M[(y0 + y) * W + x0 + x];
+  const near = boxFilter(sub, cw, ch, r, 1);
+  const part = mkCanvas(cw, ch), pctx = part.getContext('2d'), pimg = pctx.createImageData(cw, ch);
+  let n = 0;
+  for (let y = 0; y < ch; y++) for (let x = 0; x < cw; x++) {
+    const j = y * cw + x, i = (y0 + y) * W + x0 + x, k = i * 4;
+    if (!near[j] || D[k + 3] < 200 || (SP.line && SP.line[i]) || D[k] < s[0] - 25) continue;
+    let a = ((D[k] - s[0]) * d[0] + (D[k + 1] - s[1]) * d[1] + (D[k + 2] - s[2]) * d[2]) / dd;
+    if (!(a > 0.04)) continue; a = Math.min(1, a);
+    const q = j * 4; pimg.data[q] = b[0]; pimg.data[q + 1] = b[1]; pimg.data[q + 2] = b[2]; pimg.data[q + 3] = Math.round(a * 255);
+    for (let c = 0; c < 3; c++) D[k + c] = clamp(Math.round(D[k + c] - a * d[c]), 0, 255);
+    n++;
+  }
+  if (!n) return toast('頬の赤みが見つかりませんでした');
+  pctx.putImageData(pimg, 0, 0);
+  SP.wctx.putImageData(SP.data, 0, 0);
+  SP.cuts.push({ name: st.name, canvas: part, x: x0, y: y0 });
+  st.done = true;
+  M.fill(0); SP.mctx.clearRect(0, 0, W, H); SP.hist = [];
+  SP.ver++; aiReset();
+  toast(`「${st.name}」を切り出しました（ぼかしのまま）`, 1500);
   spNext();
 }
 function spNext() {
@@ -3512,7 +3546,7 @@ function autoGroupOf(nm) {
   if ((m = nm.match(/^([左右])(ハイライト|瞳)$/))) return `${m[1]}目 / ${m[1]}瞳`;
   if ((m = nm.match(/^([左右])白目$/))) return `${m[1]}目 / ${m[1]}白目`;
   if ((m = nm.match(/^([左右])目$/))) return `${m[1]}目`;
-  if (/^(鼻|口|頬|耳|顔)$/.test(nm)) return '顔';
+  if (/^(鼻|口|頬|耳|顔|顔の輪郭線)$/.test(nm)) return '顔';
   if (/^(首の影|首|体|体の下地)$/.test(nm)) return '上半身';
   return '';
 }
@@ -3880,8 +3914,40 @@ function autoAnalyze() {
     const sub = splitEyeParts(px, W);
     if (sub) { delete P[sd + '目']; put(sd + '上まつ毛', sub.lash); put(sd + '下まつ毛', sub.lashLo); put(sd + 'ハイライト', sub.hi); put(sd + '瞳', sub.iris); put(sd + '白目', sub.white); }
   }
+  // 顔の輪郭線：目より下の、顔のふちの線（あごのライン）。上の方は髪の線とつながっているので含めない
+  const outline = [];
+  { const inHole = new Uint8Array(W * H); for (const C of holes) for (const i of C.px) inHole[i] = 1;
+    const yTop = Math.round(F.y0 + F.h * 0.4), r = 3;
+    for (let y = yTop; y <= Math.min(H - 1, F.y1 + r); y++) for (let x = Math.max(0, F.x0 - r); x <= Math.min(W - 1, F.x1 + r); x++) {
+      const i = y * W + x; if (!SP.line[i] || inHole[i] || faceIds.has(lab[i])) continue;
+      const lx = x - ox, ly = y - oy; if (lx >= 0 && ly >= 0 && lx < bw && ly < bh && !out[ly * bw + lx]) continue;   // 顔の内側の線（目・口など）は除く
+      let near = false; for (let dy = -r; dy <= r && !near; dy++) for (let dx = -r; dx <= r; dx++) { const xx = x + dx, yy = y + dy; if (xx >= 0 && yy >= 0 && xx < W && yy < H && faceIds.has(lab[yy * W + xx])) { near = true; break; } }
+      if (near) outline.push(i);
+    }
+    if (outline.length < F.h * 0.6) outline.length = 0; }
+  if (outline.length) put('顔の輪郭線', outline);
+  // 頬の赤み：肌に直接塗られたぼかしの赤み。肌の色からどれだけ赤みの方へずれているかで、薄さごと取り出す
+  SP.cheek = null;
+  if (!P['頬']) {
+    const D = SP.data.data, fpx = [];
+    for (let y = face.y0; y <= face.y1; y++) for (let x = face.x0; x <= face.x1; x++) { const i = y * W + x; if (faceIds.has(lab[i]) && !SP.line[i]) fpx.push(i); }
+    const med = c => { const a = fpx.map(i => D[i * 4 + c]).sort((p, q) => p - q); return a[a.length >> 1] || 0; };
+    const sk = [med(0), med(1), med(2)], cand = [];
+    for (const i of fpx) {
+      const x = i % W, y = (i / W) | 0, ny = (y - F.y0) / F.h, nx = Math.abs(x - F.cx) / F.w; if (ny < 0.4 || ny > 0.9 || nx < 0.08) continue;
+      const r = D[i * 4], g = D[i * 4 + 1], red = (r - sk[0]) - (g - sk[1]);
+      if (red > 12 && g < sk[1] - 8 && r >= sk[0] - 10) cand.push([i, red]);
+    }
+    if (cand.length > face.n * 0.01) {
+      cand.sort((a, b) => b[1] - a[1]);
+      const top = cand.slice(0, Math.max(5, Math.round(cand.length * 0.15))), bl = [0, 1, 2].map(c => top.reduce((a, [i]) => a + D[i * 4 + c], 0) / top.length);
+      const d = [bl[0] - sk[0], bl[1] - sk[1], bl[2] - sk[2]], dd = d[0] ** 2 + d[1] ** 2 + d[2] ** 2;
+      const px = cand.filter(([i]) => ((D[i * 4] - sk[0]) * d[0] + (D[i * 4 + 1] - sk[1]) * d[1] + (D[i * 4 + 2] - sk[2]) * d[2]) / dd > 0.15).map(([i]) => i);
+      if (dd > 400 && px.length > face.n * 0.008) { SP.cheek = { skin: sk, blush: bl }; put('頬', px); }
+    }
+  }
   // 顔：肌の領域＋顔の穴すべて（目などを抜いた跡も、肌で埋めた状態で顔パーツに入る）
-  const facePx = [];
+  const facePx = outline.slice();
   for (let y = face.y0; y <= face.y1; y++) for (let x = face.x0; x <= face.x1; x++) if (faceIds.has(lab[y * W + x])) facePx.push(y * W + x);
   for (const C of holes) for (const i of C.px) facePx.push(i);
   put('顔', facePx);
@@ -4007,7 +4073,7 @@ function splitEyeParts(px0, W) {
 }
 /* 画素の一覧 → マスク（小さな穴を埋め、輪郭線も含める） */
 /* 輪郭線をどこまで取り込むか。顔と前髪は、まわりの細い髪の毛先まで線として取り込まないよう少なめに */
-const lineSteps = name => /瞳|白目|ハイライト/.test(name) ? 0 : name === '首の影' ? 1 : /顔|目|まつ毛/.test(name) ? 2 : name === '前髪' ? 3 : 6;
+const lineSteps = name => /瞳|白目|ハイライト|頬/.test(name) ? 0 : name === '顔の輪郭線' ? 1 : name === '首の影' ? 1 : /顔|目|まつ毛/.test(name) ? 2 : name === '前髪' ? 3 : 6;
 function proposalToMask(px, name) {
   SP.mask.fill(0);
   for (const i of px) if (SP.data.data[i * 4 + 3] >= 8) SP.mask[i] = 1;
