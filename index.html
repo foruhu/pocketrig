@@ -2482,6 +2482,11 @@ function autoRig(cats, want, opts = {}) {
   // 耳は顔の輪郭と一緒に動かす（逆に動かすと顔から離れて浮いて見える）
   const DEPTH_X = { eye: 0.075, highlight: 0.08, brow: 0.075, mouth: 0.07, nose: 0.095, cheek: 0.06, ear: 0.012, ahoge: 0.035, hairFront: 0.05, hairSide: 0.005, hairBack: -0.045, face: 0.012 };
   const BULGE = { face: 0.035, hairFront: 0.03, hairBack: 0.015 };
+  // 前髪が分かれていない（髪が1枚のまま）ときは、顔にかかる髪も含むので、後ろ髪も顔と一緒に動かす。
+  // 逆向きに動かすと、顔だけが髪の下で滑って目が髪に潜ってしまう
+  if (!App.parts.some(p => cat(p) === 'hairFront')) {
+    DEPTH_X.hairBack = 0.02; DEPTH_X.hairSide = 0.02; BULGE.hairBack = 0.025;
+  }
   if (want.has('angX')) {
     const q = ensureParam('顔の向き 左右', -30, 30, 0); clearOld(q);
     for (const p of R.head) {
@@ -2494,6 +2499,7 @@ function autoRig(cats, want, opts = {}) {
   if (want.has('angY')) {
     const q = ensureParam('顔の向き 上下', -30, 30, 0); clearOld(q);
     const DY = { eye: -0.05, highlight: -0.055, brow: -0.06, mouth: -0.045, nose: -0.06, cheek: -0.04, ear: -0.008, ahoge: -0.02, hairFront: -0.03, hairSide: 0, hairBack: 0.03, face: -0.008 };
+    if (!App.parts.some(p => cat(p) === 'hairFront')) { DY.hairBack = -0.012; DY.hairSide = -0.012; }
     for (const p of R.head) {
       const c = cat(p), d = (DY[c] || 0) * fh, bl = (BULGE[c] || 0) * fh * -0.8;
       const mk = s => bl ? KF({ y: s * d, offs: offsBy(p, (x, y) => { const u = clamp((y - faceB.cy) / (fh / 2), -1.2, 1.2); return [0, s * bl * Math.max(0, 1 - u * u)]; }) }) : KF({ y: s * d });
@@ -2869,6 +2875,7 @@ function pushPull(R, G, B, Wt, w, h) {
 
 /* ---------- 切り出す ---------- */
 function spCut() {
+  if ($('#spFill').checked) spLineMap();                // 穴埋めで線画を避けるため、先に線を調べておく
   const st = SP.steps[SP.cur], W = SP.W, H = SP.H, M = SP.mask, D = SP.data.data;
   let x0 = W, y0 = H, x1 = -1, y1 = -1;
   for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (M[y * W + x]) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
@@ -2897,9 +2904,21 @@ function spCut() {
       R[j] = D[k]; Gc[j] = D[k + 1]; B[j] = D[k + 2];
       Wt[j] = !h && D[k + 3] > 200 ? 1 : 0;
     }
-    // 穴のすぐ周りでいちばん多い色（目のまわりなら肌）だけを材料にする。
-    // 近くの髪など別の色まで混ぜると、にごった色になるため
-    {
+    // 線画の色は材料にしない（線の黒がにじんで広がるため）
+    for (let y = 0; y < fh; y++) for (let x = 0; x < fw; x++) { const j = y * fw + x; if (Wt[j] && SP.line && SP.line[(fy0 + y) * W + fx0 + x]) Wt[j] = 0; }
+    // 小さな穴（目・口など）：すぐ周りでいちばん多い色（目のまわりなら肌）だけを材料にする。
+    //   近くの髪など別の色まで混ぜると、にごった色になるため
+    // 大きな穴（顔・体など）：切り抜いたパーツ自身の色（線を除く）で埋める。
+    //   パーツが少し動いて下が見えても、パーツが少し広がったように見えて自然になる
+    let holeN = 0; for (let j = 0; j < hole.length; j++) holeN += hole[j];
+    // 目・眉・鼻・口・頬は下に肌があるはずなので周りの色、それ以外（顔・体・髪など）はパーツ自身の色で埋める
+    const feature = /目|眉|鼻|口|頬|ハイライト|まつ毛|瞳/.test(st.name);
+    if (!feature && holeN >= W * H * 0.005) {
+      for (let y = 0; y < fh; y++) for (let x = 0; x < fw; x++) {
+        const j = y * fw + x, g = (fy0 + y) * W + fx0 + x;
+        if (hole[j] && D[g * 4 + 3] > 200 && !(SP.line && SP.line[g])) Wt[j] = 1;
+      }
+    } else {
       const ring = boxFilter(hole, fw, fh, 6, 1), hist = new Map();
       for (let j = 0; j < hole.length; j++) if (ring[j] && Wt[j]) { const key = ((R[j] >> 4) << 8) | ((Gc[j] >> 4) << 4) | (B[j] >> 4); hist.set(key, (hist.get(key) || 0) + 1); }
       let best = -1, bn = 0; for (const [k, v] of hist) if (v > bn) { bn = v; best = k; }
