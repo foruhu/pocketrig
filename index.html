@@ -295,6 +295,7 @@ nav.bottom > button{min-width:52px;padding:0 10px}
     <button data-act="meshAll">全パーツにメッシュを自動生成</button>
     <hr>
     <button data-act="saveProj">プロジェクトを保存（.json）</button>
+    <button data-act="exportPsd">PSDで書き出す（パーツごとのレイヤー）</button>
     <button data-act="exportPng">PNGで書き出す</button>
     <hr>
     <button data-act="close" class="danger">作業を閉じる</button>
@@ -390,6 +391,24 @@ async function inflate(u8) {
   return new Uint8Array(await new Response(stream).arrayBuffer());
 }
 
+/* RGBAの画素を k 倍（k<1）に縮める（面積の平均。透明部分の色が混ざらないよう不透明度で重み付け） */
+function downscaleRGBA(src, w, h, k) {
+  const nw = Math.max(1, Math.round(w * k)), nh = Math.max(1, Math.round(h * k)), out = new Uint8ClampedArray(nw * nh * 4);
+  const acc = new Float32Array(nw * 5), sx = nw / w, sy = nh / h;
+  let row = -1;
+  const flush = r => { if (r < 0) return; const area = (1 / sx) * (1 / sy); for (let x = 0; x < nw; x++) { const a = acc[x * 5 + 3], j = (r * nw + x) * 4; if (a > 0) { out[j] = acc[x * 5] / a; out[j + 1] = acc[x * 5 + 1] / a; out[j + 2] = acc[x * 5 + 2] / a; } out[j + 3] = Math.min(255, a / area); } acc.fill(0); };
+  for (let y = 0; y < h; y++) {
+    const ty = Math.min(nh - 1, Math.floor(y * sy)); if (ty !== row) { flush(row); row = ty; }
+    for (let x = 0; x < w; x++) {
+      const i = (y * w + x) * 4, a = src[i + 3]; if (!a) continue;
+      const t = Math.min(nw - 1, Math.floor(x * sx)) * 5;
+      acc[t] += src[i] * a; acc[t + 1] += src[i + 1] * a; acc[t + 2] += src[i + 2] * a; acc[t + 3] += a;
+    }
+  }
+  flush(row);
+  return { rgba: out, w: nw, h: nh };
+}
+const MAX_DOC = 4096;   // スマホのメモリと画像の大きさの上限に合わせ、これより大きいPSDは縮めて読み込む
 async function parsePSD(buf, onProgress) {
   const dv = new DataView(buf), bytes = new Uint8Array(buf);
   let p = 0;
@@ -405,6 +424,7 @@ async function parsePSD(buf, onProgress) {
   if (ver !== 1) throw new Error('PSB形式（大容量PSD）は未対応です。PSDで保存し直してください');
   p += 6;
   const nch = u16(), H = u32(), W = u32(), depth = u16(), mode = u16();
+  const scaleK = Math.min(1, MAX_DOC / Math.max(W, H));
   if (depth !== 8) throw new Error(depth + 'bitのPSDは未対応です。8bitで保存し直してください');
   if (mode !== 3 && mode !== 1) throw new Error('RGBカラーのPSDにしてください（CMYKなどは未対応）');
   const cmLen = u32(); p += cmLen;     // カラーモードデータ
@@ -484,6 +504,11 @@ async function parsePSD(buf, onProgress) {
         rgba[j] = R[i]; rgba[j + 1] = G[i]; rgba[j + 2] = B[i]; rgba[j + 3] = A ? A[i] : 255;
       }
       r.rgba = rgba; r.w = w; r.h = h;
+      if (scaleK < 1) {   // 大きなPSDは、レイヤーを読んだそばから縮めて、メモリを使いすぎないようにする
+        const d = downscaleRGBA(rgba, w, h, scaleK);
+        r.rgba = d.rgba; r.w = d.w; r.h = d.h; r.left = Math.round(r.left * scaleK); r.top = Math.round(r.top * scaleK);
+        r.right = r.left + d.w; r.bottom = r.top + d.h;
+      }
     }
   }
 
@@ -522,9 +547,9 @@ async function parsePSD(buf, onProgress) {
     const R = planes[0], G = mode === 3 ? planes[1] : R, B = mode === 3 ? planes[2] : R;
     const rgba = new Uint8ClampedArray(n * 4);
     for (let i = 0, j = 0; i < n; i++, j += 4) { rgba[j] = R[i]; rgba[j + 1] = G[i]; rgba[j + 2] = B[i]; rgba[j + 3] = 255; }
-    merged = { rgba, w: W, h: H };
+    merged = scaleK < 1 ? downscaleRGBA(rgba, W, H, scaleK) : { rgba, w: W, h: H };
   }
-  return { width: W, height: H, layers, merged };
+  return { width: Math.round(W * scaleK), height: Math.round(H * scaleK), layers, merged, scaleK };
 }
 
 function rgbaToCanvas(rgba, w, h) {
@@ -1439,6 +1464,7 @@ async function importPSD(file) {
   await setDoc({ name: file.name.replace(/\.psd$/i, ''), w: psd.width, h: psd.height }, defs);
   const notes = [];
   if (psd.merged) notes.push('レイヤー情報が無いため1枚の画像として開きました');
+  if (psd.scaleK < 1) notes.push(`大きいので${Math.round(psd.scaleK * 100)}%に縮めて開きました`);
   if (info.clipped) notes.push(`クリッピング${info.clipped}枚を下のパーツに合成`);
   if (info.blends) notes.push(`乗算などの合成モード${info.blends}枚は通常表示`);
   toast(`${App.parts.length}パーツを読み込みました` + (notes.length ? '\n' + notes.join('・') : ''), 4500);
@@ -1486,6 +1512,119 @@ function saveProject() {
   download(new Blob([JSON.stringify(data)], { type: 'application/json' }), `${App.doc.name}.pocketrig.json`);
   toast('プロジェクトを保存しました');
 }
+
+/* =========================================================
+   PSDで書き出す（1パーツ＝1レイヤー、グループ付き）
+   クリスタ・Photoshop・Live2D Cubism Editor で開ける形式にする
+   - 書き出すのは「基本の形」（パラメータや変形はかけない）
+   - 同じグループ名（または役割）が続くパーツは、グループにまとめる
+   ========================================================= */
+function packBits(src, s, n, out) {     // 1行分を PackBits で圧縮して out に追加。書いたバイト数を返す
+  const start = out.length; let i = 0;
+  while (i < n) {
+    let j = i; while (j + 1 < n && src[s + j + 1] === src[s + i] && j - i < 127) j++;
+    if (j > i) { out.push(257 - (j - i + 1), src[s + i]); i = j + 1; continue; }
+    j = i; while (j + 1 < n && j - i < 127 && !(j + 2 < n && src[s + j + 1] === src[s + j + 2])) j++;
+    out.push(j - i); for (let k = i; k <= j; k++) out.push(src[s + k]); i = j + 1;
+  }
+  return out.length - start;
+}
+/* 1チャンネル（w×h）を RLE で圧縮したデータ（圧縮方式2バイト＋各行の長さ＋本体） */
+function rleChannel(plane, w, h) {
+  const body = [], lens = new Uint16Array(h);
+  for (let y = 0; y < h; y++) lens[y] = packBits(plane, y * w, w, body);
+  const out = new Uint8Array(2 + h * 2 + body.length), dv = new DataView(out.buffer);
+  dv.setUint16(0, 1); for (let y = 0; y < h; y++) dv.setUint16(2 + y * 2, lens[y]);
+  out.set(body, 2 + h * 2);
+  return out;
+}
+class ByteWriter {
+  constructor() { this.chunks = []; this.len = 0; }
+  bytes(a) { const u = a instanceof Uint8Array ? a : Uint8Array.from(a); this.chunks.push(u); this.len += u.length; }
+  u8(v) { this.bytes([v & 255]); }
+  u16(v) { this.bytes([(v >> 8) & 255, v & 255]); }
+  i16(v) { this.u16(v < 0 ? v + 65536 : v); }
+  u32(v) { this.bytes([(v >>> 24) & 255, (v >>> 16) & 255, (v >>> 8) & 255, v & 255]); }
+  i32(v) { this.u32(v >>> 0); }
+  str(s) { this.bytes([...s].map(c => c.charCodeAt(0))); }
+  blob() { return new Blob(this.chunks, { type: 'image/vnd.adobe.photoshop' }); }
+  out() { const u = new Uint8Array(this.len); let o = 0; for (const c of this.chunks) { u.set(c, o); o += c.length; } return u; }
+}
+function psdLayerRecord(rec, info) {   // info: {top,left,bottom,right,name,opacity,hidden,section,chans:[{id,data}]}
+  rec.i32(info.top); rec.i32(info.left); rec.i32(info.bottom); rec.i32(info.right);
+  rec.u16(info.chans.length);
+  for (const c of info.chans) { rec.i16(c.id); rec.u32(c.data.length); }
+  rec.str('8BIM'); rec.str('norm'); rec.u8(info.opacity); rec.u8(0); rec.u8(info.hidden ? 2 : 0); rec.u8(0);
+  const ex = new ByteWriter();
+  ex.u32(0); ex.u32(0);                                     // レイヤーマスク・ブレンド条件はなし
+  const ascii = [...info.name].map(c => c.charCodeAt(0) < 128 ? c.charCodeAt(0) : 63).slice(0, 255);
+  ex.u8(ascii.length); ex.bytes(ascii); for (let k = (ascii.length + 1) % 4; k && k < 4; k++) ex.u8(0);
+  const block = (key, w) => { const d = w.out(), pad = (4 - d.length % 4) % 4; ex.str('8BIM'); ex.str(key); ex.u32(d.length + pad); ex.bytes(d); for (let k = 0; k < pad; k++) ex.u8(0); };
+  const un = new ByteWriter(); un.u32(info.name.length); for (const ch of info.name) un.u16(ch.charCodeAt(0)); block('luni', un);   // 日本語の名前
+  if (info.section) { const sc = new ByteWriter(); sc.u32(info.section); if (info.section !== 3) { sc.str('8BIM'); sc.str('pass'); } block('lsct', sc); }
+  const e = ex.out(); rec.u32(e.length); rec.bytes(e);
+}
+async function exportPSD() {
+  if (!App.doc) return toast('まだ何も開いていません');
+  loading(true, 'PSDを作っています…'); await tick();
+  try {
+    const W = App.doc.w, H = App.doc.h;
+    // 書き出す順（奥→手前）に、レイヤーとグループの区切りを並べる
+    const groupOf = p => { if (p.group) return p.group; let c = guessCat(p); if (c === 'iris') c = 'eye'; return (CAT_LIST.find(([k]) => k === c) || [, ''])[1]; };   // 瞳は目と同じグループに
+    const items = []; let cur = null;
+    for (const p of App.parts) {
+      const g = groupOf(p);
+      if (g !== cur) { if (cur) items.push({ type: 'open', name: cur }); if (g) items.push({ type: 'close' }); cur = g; }
+      items.push({ type: 'layer', p });
+    }
+    if (cur) items.push({ type: 'open', name: cur });
+    // 奥から順にグループを閉じる・開く：PSDでは「グループの終わり」の区切りがグループの中身より奥に置かれる
+    const recs = new ByteWriter(), datas = [];
+    let count = 0;
+    for (const it of items) {
+      if (it.type === 'layer') {
+        const p = it.p, x0 = Math.round(p.left + p.base.x), y0 = Math.round(p.top + p.base.y);
+        const d = p.canvas.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, p.w, p.h).data, n = p.w * p.h;
+        const planes = [new Uint8Array(n), new Uint8Array(n), new Uint8Array(n), new Uint8Array(n)];
+        for (let i = 0; i < n; i++) { planes[0][i] = d[i * 4 + 3]; planes[1][i] = d[i * 4]; planes[2][i] = d[i * 4 + 1]; planes[3][i] = d[i * 4 + 2]; }
+        const chans = [-1, 0, 1, 2].map((id, k) => ({ id, data: rleChannel(planes[k], p.w, p.h) }));
+        psdLayerRecord(recs, { top: y0, left: x0, bottom: y0 + p.h, right: x0 + p.w, name: p.name, opacity: Math.round(clamp(p.base.opacity, 0, 1) * 255), hidden: !p.visible, chans });
+        for (const c of chans) datas.push(c.data);
+        count++;
+        if (count % 4 === 0) { loading(true, `PSDを作っています… ${count}/${App.parts.length}`); await tick(); }
+      } else {
+        const chans = [-1, 0, 1, 2].map(id => ({ id, data: Uint8Array.from([0, 0]) }));
+        psdLayerRecord(recs, { top: 0, left: 0, bottom: 0, right: 0, name: it.type === 'open' ? it.name : '</Layer group>', opacity: 255, hidden: false, section: it.type === 'open' ? 1 : 3, chans });
+        for (const c of chans) datas.push(c.data);
+      }
+    }
+    const nRec = items.length;
+    const li = new ByteWriter();
+    li.i16(nRec); li.bytes(recs.out()); for (const d of datas) li.bytes(d);
+    if (li.len % 2) li.u8(0);
+    // 統合画像（基本の形を描いたもの）
+    const saved = App.params.map(q => q.value); for (const q of App.params) q.value = q.def; evaluateAll();
+    let img = renderToPixels();
+    App.params.forEach((q, i) => q.value = saved[i]); evaluateAll();
+    if (img.width !== W || img.height !== H) { const c = mkCanvas(W, H), t = mkCanvas(img.width, img.height); t.getContext('2d').putImageData(img, 0, 0); c.getContext('2d').drawImage(t, 0, 0, W, H); img = c.getContext('2d').getImageData(0, 0, W, H); }
+    const n = W * H, mp = [new Uint8Array(n), new Uint8Array(n), new Uint8Array(n)];
+    for (let i = 0; i < n; i++) { const a = img.data[i * 4 + 3] / 255; for (let k = 0; k < 3; k++) mp[k][i] = Math.round(img.data[i * 4 + k] * a + 255 * (1 - a)); }   // 透明な所は白
+    const w = new ByteWriter();
+    w.str('8BPS'); w.u16(1); w.bytes([0, 0, 0, 0, 0, 0]); w.u16(3); w.u32(H); w.u32(W); w.u16(8); w.u16(3);
+    w.u32(0); w.u32(0);
+    const liData = li.out();
+    w.u32(4 + liData.length + 4); w.u32(liData.length); w.bytes(liData); w.u32(0);
+    // 統合画像：RLE（全チャンネルの行の長さ → 本体）
+    w.u16(1);
+    const bodies = [], lens = [];
+    for (let k = 0; k < 3; k++) for (let y = 0; y < H; y++) { const b = []; lens.push(packBits(mp[k], y * W, W, b)); bodies.push(Uint8Array.from(b)); }
+    for (const l of lens) w.u16(l); for (const b of bodies) w.bytes(b);
+    download(w.blob(), `${App.doc.name}_パーツ分け.psd`);
+    toast(`${App.parts.length}パーツをPSDで書き出しました`);
+  } catch (e) { console.error(e); toast('PSDを書き出せませんでした（' + (e.message || e) + '）', 5000); }
+  finally { loading(false); }
+}
+
 async function exportPNG() {
   if (!App.doc) return toast('まだ何も開いていません');
   const img = renderToPixels(), c = mkCanvas(img.width, img.height);
@@ -2406,7 +2545,7 @@ const PART_CATS = [
   { key: 'body', label: '体・服', re: /neckwear|topwear|handwear|bottomwear|legwear|footwear|\btail\b|wings|objects/i },
   { key: 'highlight', label: '目のハイライト', re: /ハイライト|highlight|光/i },
   { key: 'brow', label: '眉', re: /眉|まゆ|brow/i },
-  { key: 'iris', label: '瞳', re: /irides|iris|pupil|瞳|黒目|虹彩/i },
+  { key: 'iris', label: '瞳', re: /irides|iris|pupil|瞳|黒目|虹彩|目玉/i },
   { key: 'eye', label: '目（白目・まつ毛など）', re: /白目|まつ毛|まつげ|睫|まぶた|瞼|目|eye|lash|sclera/i },
   { key: 'mouth', label: '口', re: /口|歯|舌|唇|mouth|teeth|tongue|lip/i },
   { key: 'nose', label: '鼻', re: /鼻|nose/i },
@@ -2420,7 +2559,7 @@ const PART_CATS = [
   { key: 'face', label: '顔（輪郭・肌）', re: /顔|輪郭|肌|face|head|skin/i },
   { key: 'neckShadow', label: '首の影', re: /首.*影|影.*首|neck.?shadow/i },
   { key: 'neck', label: '首', re: /首|neck/i },
-  { key: 'body', label: '体・服', re: /体|胴|服|腕|手|胸|肩|スカート|袖|body|arm|hand|cloth|torso/i },
+  { key: 'body', label: '体・服', re: /体|胴|服|腕|手|胸|肩|スカート|袖|半身|足|脚|靴|body|arm|hand|cloth|torso|leg/i },
 ];
 const CAT_LIST = [...new Map(PART_CATS.map(c => [c.key, c.label])).entries()];
 const HEAD_CATS = new Set(['highlight', 'eye', 'iris', 'brow', 'mouth', 'nose', 'cheek', 'ear', 'ahoge', 'hairFront', 'hairSide', 'hairBack', 'face', 'headAcc', 'headBase']);
@@ -3230,7 +3369,7 @@ function pushPull(R, G, B, Wt, w, h) {
 function spCut() {
   if ($('#spFill').checked) spLineMap();                // 穴埋めで線画を避けるため、先に線を調べておく
   const st = SP.steps[SP.cur], W = SP.W, H = SP.H, M = SP.mask, D = SP.data.data;
-  if (SP.taken && st.name !== '首の影') for (let k = 0; k < M.length; k++) if (M[k]) SP.taken[k] = 1;   // 自動の範囲が次のパーツと重ならないように覚えておく
+  if (SP.taken && st.name !== '首の影' && !/瞳/.test(st.name)) for (let k = 0; k < M.length; k++) if (M[k]) SP.taken[k] = 1;   // 自動の範囲が次のパーツと重ならないように覚えておく
   let x0 = W, y0 = H, x1 = -1, y1 = -1;
   for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (M[y * W + x]) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
   if (x1 < 0) return toast('まだ塗られていません。指でなぞってください');
@@ -3278,14 +3417,16 @@ function spCut() {
       }
     } else {
       const ring = boxFilter(hole, fw, fh, 6, 1), hist = new Map();
-      for (let j = 0; j < hole.length; j++) if (ring[j] && Wt[j]) { const key = ((R[j] >> 4) << 8) | ((Gc[j] >> 4) << 4) | (B[j] >> 4); hist.set(key, (hist.get(key) || 0) + 1); }
+      // まつ毛・白目・目の跡は、肌の色だけで埋める（白目の白で埋めると、目を閉じたときに白く残るため）
+      const skinOnly = /まつ毛|白目|目$/.test(st.name) && !/瞳/.test(st.name);
+      for (let j = 0; j < hole.length; j++) if (ring[j] && Wt[j] && (!skinOnly || isSkin(R[j], Gc[j], B[j]))) { const key = ((R[j] >> 4) << 8) | ((Gc[j] >> 4) << 4) | (B[j] >> 4); hist.set(key, (hist.get(key) || 0) + 1); }
       let best = -1, bn = 0; for (const [k, v] of hist) if (v > bn) { bn = v; best = k; }
       if (best >= 0) {
         let sr = 0, sg = 0, sb = 0, sn = 0;
         for (let j = 0; j < hole.length; j++) if (ring[j] && Wt[j] && (((R[j] >> 4) << 8) | ((Gc[j] >> 4) << 4) | (B[j] >> 4)) === best) { sr += R[j]; sg += Gc[j]; sb += B[j]; sn++; }
         const dom = [sr / sn, sg / sn, sb / sn], keep = new Float32Array(Wt.length);
         let kn = 0;
-        for (let j = 0; j < Wt.length; j++) if (Wt[j] && Math.hypot(R[j] - dom[0], Gc[j] - dom[1], B[j] - dom[2]) < 55) { keep[j] = 1; kn++; }
+        for (let j = 0; j < Wt.length; j++) if (Wt[j] && Math.hypot(R[j] - dom[0], Gc[j] - dom[1], B[j] - dom[2]) < (skinOnly ? 28 : 55) && (!skinOnly || isSkin(R[j], Gc[j], B[j]))) { keep[j] = 1; kn++; }
         if (kn > 30) Wt.set(keep);
       }
     }
@@ -3698,6 +3839,12 @@ function autoAnalyze() {
     }
     for (const sd of ['L', 'R']) { const nm = (sd === 'L' ? '右' : '左') + '目'; if (!P[nm] && found[sd]) put(nm, found[sd].px); }
   }
+  // 目をさらに「まつ毛」「瞳」「白目」に分ける（プロのパーツ分けと同じ形。瞳だけを動かして視線を作れる）
+  for (const sd of ['左', '右']) {
+    const px = P[sd + '目']; if (!px) continue;
+    const sub = splitEyeParts(px, W);
+    if (sub) { delete P[sd + '目']; put(sd + 'まつ毛', sub.lash); put(sd + '瞳', sub.iris); put(sd + '白目', sub.white); }
+  }
   // 顔：肌の領域＋顔の穴すべて（目などを抜いた跡も、肌で埋めた状態で顔パーツに入る）
   const facePx = [];
   for (let y = face.y0; y <= face.y1; y++) for (let x = face.x0; x <= face.x1; x++) if (faceIds.has(lab[y * W + x])) facePx.push(y * W + x);
@@ -3758,9 +3905,67 @@ function autoAnalyze() {
   if (body.length) { const px = []; for (const r of body) for (const i of regPx(r)) px.push(i); put('体', px); }   // 大きな配列を「...」で広げると落ちるので1つずつ
   return P;
 }
+/* 目の画素を、まつ毛（上下のふちの暗い線）・瞳（白目に囲まれた色のある丸）・白目（残り）に分ける */
+function splitEyeParts(px0, W) {
+  const D = SP.data.data; if (px0.length < 30) return null;
+  const inM = new Map(); let x0 = 1e9, y0 = 1e9, x1 = -1, y1 = -1;
+  for (const i of px0) { inM.set(i, 1); const x = i % W, y = (i / W) | 0; if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+  // 目のふちが取りこぼされていることがあるので、となりの肌でない所（線や瞳の端）を少しだけ取り込む
+  { const g = Math.max(2, Math.round((y1 - y0 + 1) * 0.15)); let front = [...inM.keys()];
+    for (let s = 0; s < g && front.length; s++) { const next = [];
+      for (const i of front) for (const j of [i - 1, i + 1, i - W, i + W]) { if (inM.has(j) || j < 0 || D[j * 4 + 3] < 8 || isSkin(D[j * 4], D[j * 4 + 1], D[j * 4 + 2])) continue; inM.set(j, 1); next.push(j); }
+      front = next; }
+    for (const i of inM.keys()) { const x = i % W, y = (i / W) | 0; if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; } }
+  // 目の範囲に飛び飛びの所があれば、行ごとに左右の端の間を埋めてから分ける（まつ毛の線が抜けていることがあるため）
+  for (let y = y0; y <= y1; y++) { let a = -1, b = -1; for (let x = x0; x <= x1; x++) if (inM.has(y * W + x)) { if (a < 0) a = x; b = x; } if (a >= 0) for (let x = a; x <= b; x++) { const i = y * W + x; if (D[i * 4 + 3] >= 8) inM.set(i, 1); } }
+  const px = [...inM.keys()], n = px.length;
+  // 肌がたくさん入っている（目の形がはっきり取れていない）ときは分けない
+  let skinN = 0; for (const i of px) if (isSkin(D[i * 4], D[i * 4 + 1], D[i * 4 + 2])) skinN++;
+  if (skinN > n * 0.25) return null;
+  const h = y1 - y0 + 1, lum = i => 0.299 * D[i * 4] + 0.587 * D[i * 4 + 1] + 0.114 * D[i * 4 + 2];
+  const sat = i => { const r = D[i * 4], g = D[i * 4 + 1], b = D[i * 4 + 2], mx = Math.max(r, g, b); return mx ? (mx - Math.min(r, g, b)) / mx : 0; };
+  const lashes = new Set(), dark = i => lum(i) < 75;
+  // 上まつ毛：各列の上から、目の範囲に入ってすぐの暗い連なり
+  for (let x = x0; x <= x1; x++) {
+    let y = y0; while (y <= y1 && !inM.has(y * W + x)) y++;
+    for (let s = 0; s < 3 && y <= y1 && inM.has(y * W + x) && !dark(y * W + x); s++) y++;   // ふちのなじみ（明るい1〜2px）は飛ばす
+    let k = 0; while (y <= y1 && inM.has(y * W + x) && dark(y * W + x) && k < h * 0.4) { lashes.add(y * W + x); y++; k++; }
+    // 下まつ毛：下から（細いものだけ）
+    let yb = y1; while (yb >= y0 && !inM.has(yb * W + x)) yb--;
+    for (let s = 0; s < 3 && yb >= y0 && inM.has(yb * W + x) && !dark(yb * W + x); s++) yb--;
+    k = 0; const tmp = []; while (yb >= y0 && inM.has(yb * W + x) && dark(yb * W + x) && k < h * 0.15) { tmp.push(yb * W + x); yb--; k++; }
+    if (k < h * 0.15) for (const i of tmp) lashes.add(i);
+  }
+  // 上まつ毛につながる暗い所（上半分）もまつ毛に
+  const st = [...lashes];
+  while (st.length) { const i = st.pop(); for (const j of [i - 1, i + 1, i - W, i + W, i - W - 1, i - W + 1]) { if (!inM.has(j) || lashes.has(j) || !dark(j) || ((j / W) | 0) > y0 + h * 0.45) continue; lashes.add(j); st.push(j); } }
+  // 瞳の候補：まつ毛でも白目でもない所（白っぽくない所）。いちばん大きなまとまりを瞳とする
+  const isWhite = i => lum(i) > 180 && sat(i) < 0.2;
+  const cand = new Set(); for (const i of px) if (!lashes.has(i) && !isWhite(i)) cand.add(i);
+  const seen = new Set(); let best = null;
+  for (const s0 of cand) {
+    if (seen.has(s0)) continue;
+    const comp = [], q = [s0]; seen.add(s0);
+    while (q.length) { const i = q.pop(); comp.push(i); for (const j of [i - 1, i + 1, i - W, i + W]) if (cand.has(j) && !seen.has(j)) { seen.add(j); q.push(j); } }
+    if (!best || comp.length > best.length) best = comp;
+  }
+  if (!best || best.length < n * 0.08) return null;
+  { let r = 0, g = 0, b = 0; for (const i of best) { r += D[i * 4]; g += D[i * 4 + 1]; b += D[i * 4 + 2]; } if (isSkin(r / best.length, g / best.length, b / best.length)) return null; }
+  // 瞳に囲まれた白（ハイライト）も瞳に含める
+  const iris = new Set(best); let ix0 = 1e9, iy0 = 1e9, ix1 = -1, iy1 = -1;
+  for (const i of best) { const x = i % W, y = (i / W) | 0; if (x < ix0) ix0 = x; if (x > ix1) ix1 = x; if (y < iy0) iy0 = y; if (y > iy1) iy1 = y; }
+  for (let y = iy0; y <= iy1; y++) {
+    let a = -1, b = -1; for (let x = ix0; x <= ix1; x++) if (iris.has(y * W + x)) { if (a < 0) a = x; b = x; }
+    if (a >= 0) for (let x = a; x <= b; x++) { const i = y * W + x; if (inM.has(i) && !lashes.has(i)) iris.add(i); }
+  }
+  if (px.length - lashes.size - iris.size < n * 0.06 || lashes.size < n * 0.03) return null;
+  // 白目は瞳の後ろも含めた「目玉全体」にする（瞳を動かしても、その下に白目がある）
+  const white = px.filter(i => !lashes.has(i));   // うまく分かれないときは目を1つのまま
+  return { lash: [...lashes], iris: [...iris], white };
+}
 /* 画素の一覧 → マスク（小さな穴を埋め、輪郭線も含める） */
 /* 輪郭線をどこまで取り込むか。顔と前髪は、まわりの細い髪の毛先まで線として取り込まないよう少なめに */
-const lineSteps = name => name === '首の影' ? 1 : /顔|目/.test(name) ? 2 : name === '前髪' ? 3 : 6;
+const lineSteps = name => /瞳|白目/.test(name) ? 0 : name === '首の影' ? 1 : /顔|目|まつ毛/.test(name) ? 2 : name === '前髪' ? 3 : 6;
 function proposalToMask(px, name) {
   SP.mask.fill(0);
   for (const i of px) if (SP.data.data[i * 4 + 3] >= 8) SP.mask[i] = 1;
@@ -3863,6 +4068,14 @@ async function spAuto() {
   try { bgRemoved = autoRemoveBg(); P = autoAnalyzeScaled(); } catch (e) { console.error(e); P = null; }
   finally { loading(false); spDraw(); }
   if (bgRemoved) toast('塗りつぶされた背景を透明にしました', 3000);
+  // 目が「まつ毛・瞳・白目」に分かれたときは、手順の「左目」「右目」をその3つに置き換える（まつ毛が手前、白目が奥）
+  for (const sd of ['左', '右']) {
+    const k = SP.steps.findIndex(s => s.name === sd + '目');
+    if (k >= 0 && P && P[sd + '瞳']) SP.steps.splice(k, 1,
+      { name: sd + 'まつ毛', hint: '目のふちの線', fill: true, opt: true, done: false },
+      { name: sd + '瞳', hint: '黒目（ハイライト込み）', fill: true, opt: true, done: false },
+      { name: sd + '白目', hint: '白目', fill: true, opt: true, done: false });
+  }
   const names = P ? SP.steps.filter(s => !s.remainder && !s.done && P[s.name]).map(s => s.name) : [];
   if (!names.length) {
     return showActions('自動では見つけられませんでした', [
@@ -4105,6 +4318,7 @@ const ACTIONS = {
   sample: openSample,
   saveProj: saveProject,
   exportPng: exportPNG,
+  exportPsd: exportPSD,
   split: () => openSplit(),
   meshAll: () => {
     if (!App.doc) return toast('まだ何も開いていません');
